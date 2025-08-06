@@ -15,7 +15,7 @@ def register(server_url):
         print("Failed to register:", e)
         sys.exit(1)
 
-def poll(server_url, interval=3):
+def poll(server_url, interval=0):
     while True:
         try:
             r = requests.get(f"{server_url}/data", verify=False)
@@ -43,8 +43,9 @@ def poll(server_url, interval=3):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Connect to HTTPS command server.")
-    parser.add_argument('--server', required=True, help='Full server URL, e.g., https://192.168.1.5:4443')
+    parser.add_argument('--url', dest='server', required=True, help='Full server URL, e.g., https://192.168.1.5:8443')
+    parser.add_argument('--sleep', type=int, default=0, required=False, help='Polling interval in seconds (default: 0)')
     args = parser.parse_args()
 
     register(args.server)
-    poll(args.server)
+    poll(args.server, args.sleep)

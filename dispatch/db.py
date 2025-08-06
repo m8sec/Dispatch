@@ -380,18 +380,20 @@ class DispatchDB(SqliteDB):
     def update_allow_address(self, form_input):
         # Truncate DB and re-add
         self.exec('''DELETE FROM ip_allow_list;''')
-        # Force localhost record to preserve app functionality
-        self.executemany('INSERT OR IGNORE INTO ip_allow_list (ip) VALUES (?);',[("127.0.0.1",), ("localhost",)])
-        # Add form inputs
-        for x in form_input.split('\n'):
-            self.exec('INSERT OR IGNORE INTO ip_allow_list (ip) VALUES (?);', (x.strip(),)) if x else False
+        if form_input:
+            # Force localhost record to preserve app functionality
+            self.executemany('INSERT OR IGNORE INTO ip_allow_list (ip) VALUES (?);',[("127.0.0.1",), ("localhost",)])
+            # Add form inputs
+            for x in form_input.split('\n'):
+                self.exec('INSERT OR IGNORE INTO ip_allow_list (ip) VALUES (?);', (x.strip(),)) if x else False
 
 
     def update_allow_agent(self, form_input):
         # Truncate DB and re-add
         self.exec('''DELETE FROM ua_allow_list;''')
-        for x in form_input.split('\n'):
-            self.exec('INSERT OR IGNORE INTO ua_allow_list (agent) VALUES (?);', (x.strip(),)) if x else False
+        if form_input:
+            for x in form_input.split('\n'):
+                self.exec('INSERT OR IGNORE INTO ua_allow_list (agent) VALUES (?);', (x.strip(),)) if x else False
 
     def update_allow_login(self, form_input):
         # Truncate DB and re-add

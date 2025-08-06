@@ -114,7 +114,7 @@ def start_server(host, port):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Start HTTPS command server.")
     parser.add_argument('--host', default='0.0.0.0', help='Bind address (default: 0.0.0.0)')
-    parser.add_argument('--port', type=int, default=4443, help='Port to bind (default: 4443)')
+    parser.add_argument('--port', type=int, default=8443, help='Port to bind (default: 4443)')
     args = parser.parse_args()
 
     print(f"\n[+] Starting Dispatch demo C2")

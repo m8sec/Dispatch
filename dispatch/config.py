@@ -229,7 +229,6 @@ def setup_dispatch_logger(log_name='dispatch-logger', log_level=logging.INFO):
 
 
 def log(data, user=False, remote_ip=None):
-    print(data, user, remote_ip )
     user = user if user else {'id': 0, 'user': 'n/a', 'role_name': 'Public'}
     logger.info(f"{data} - USER: {user['user']} ({user['id']}) - PRIV: {user['role_name']} - SRC: {remote_ip}")
 
