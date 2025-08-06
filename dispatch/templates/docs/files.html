@@ -1,0 +1,67 @@
+{% extends "master.html" %}
+
+{% block title %}
+Docs > Files
+{% endblock %}
+
+{% block html_head %}
+    <style>
+        .file_perms li {
+            width:65%;
+            padding-top: 25px;
+        }
+
+        img {
+            border: 1px solid black;
+            margin:10px 0 5px 0;
+        }
+    </style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>File Permissions</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="#">Documentation</a></li>
+      <li class="breadcrumb-item active">Files</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body" width="100%">
+        <h5 class="card-title">Overview</h5>
+        Files must have one of the following 3 permissions applied:
+
+            <ol class="file_perms">
+                <li><b>Public</b> - File is accessible to the open internet via alias name.</li>
+
+                <li><b>Public Once</b> - File is accessible one time without authentication, then reverts to <code>Private</code>.</li>
+
+                <li><b>Private</b> - File requires proper authentication via Web UI or API Key.</li>
+            </ol>
+
+            <p>
+                <i>* If no permissions are set during upload, files will default to <code>Private</code></i><br>
+                <i style="margin-top:5px;">* ALL permission types are protected by </b> <a href="/docs/access">access restrictions</a></i>
+            </p>
+
+        <h5 class="card-title">Changing File Permissions</h5>
+        <p>
+            As an administrator, navigate to the home page (<code>/</code>) containing a list of all files. Find the target
+            file and click the dropdown menu under the <code>Access</code> column. The file will automatically update after
+            selecting the new permission and flash green to indicate the change was successful.
+        </p>
+        <img src="/img/file_permissions.png">
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block html_footer %}
+{% endblock %}

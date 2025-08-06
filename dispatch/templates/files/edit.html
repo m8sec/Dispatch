@@ -1,0 +1,77 @@
+{% extends "master.html" %}
+
+{% block title %}
+Edit
+{% endblock %}
+
+{% block html_head %}
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Edit File</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item"><a href="/">File</a></li>
+      <li class="breadcrumb-item active">Edit</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+  <div class="card-body" width="100%">
+    <h5 class="card-title">{{ data['filename'] }}</h5>
+    <form action="/file/edit" method="post" name="edit_file" enctype="multipart/form-data">
+      <div class="row gy-4">
+        <input type="hidden" name="id" value="{{ data['id'] }}">
+        <input type="hidden" name="old_filename" value="{{ data['filename'] }}">
+        <input type="hidden" name="old_alias" value="{{ data['alias'] }}">
+
+        <div class="col-md-12">
+          <label for="filename">Filename:</label>
+          <input type="text" class="form-control" name="filename" value="{{ data['filename'] }}" required>
+        </div>
+
+        <div class="col-md-12">
+          <label for="alias">Alias:</label>
+          <input type="text" class="form-control" name="alias" value="{{ data['alias'] }}" required>
+        </div>
+
+        <div class="col-md-10">
+          <label>Access Permissions</label>
+          <select name="access" class="form-control">
+            <option value="1" {{ 'selected' if data['access'] == 1 }}>Public</option>
+            <option value="2" {{ 'selected' if data['access'] == 2 }}>Public once</option>
+            <option value="3" {{ 'selected' if data['access'] == 3 }}>Private</option>
+          </select>
+        </div>
+
+        <div class="col-md-12">
+          <label for="file_content">Content:</label>
+          {% if content == 'False' %}
+          <div class="form-control" style="background-color:#f0f4f7;">
+            Live editing disabled: Unsupported File-Type.
+          </div>
+          {% else %}
+          <textarea class="form-control" name="file_content" rows="10" required>{{ content }}</textarea>
+          {% endif %}
+        </div>
+
+        <div class="col-md-3">
+          <button style="background-color:#42B41C;border-color:#42B41C;" class="btn btn-primary w-100" type="submit">
+            <i class="bi bi-plus-pencil"></i>&nbsp;
+            Update
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+{{ status_msg }}
+{% endblock %}

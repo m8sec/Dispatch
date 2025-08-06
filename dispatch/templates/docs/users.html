@@ -1,0 +1,64 @@
+{% extends "master.html" %}
+
+{% block title %}
+Docs > Users
+{% endblock %}
+
+{% block html_head %}
+    <style>
+        .user_roles li {
+            width:65%;
+            padding-top: 25px;
+        }
+
+        img {
+            border: 1px solid black;
+            margin:10px 0 5px 0;
+        }
+    </style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>User Roles</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="#">Documentation</a></li>
+      <li class="breadcrumb-item active">Users</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body" width="100%">
+        <h5 class="card-title">Overview</h5>
+        Dispatch provides the following 4 user roles administrators can assign when creating new accounts:
+
+            <ol start="0" class="user_roles">
+                <li><b>Disabled</b> - When a user account is marked as disabled, they will no longer be able to access the web interface and any assigned API keys will not work.</li>
+
+                <li><b>Download Only</b> - Users will only be authorized to download files via web or API. Download Only users have login capabilities but are limited to the "Change-password" page. The index page will remain blank as they are unable to list or edit files, and no other menu options will be provided.</li>
+
+                <li><b>Upload Only</b> - As the name suggests, Upload Only users will only be able to add files using the Web or API. They are not able to list files after upload, modify file permissions, or download files.</li>
+
+                <li><b>Operator</b> - Operators can modify settings, access controls, and add/edit/delete all lower ranking users. However, they cannot interact or view administrators or alternate operator accounts. </li>
+
+                <li><b>Administrator</b> - Super admin account with complete access to the Dispatch application and all users.</li>
+            </ol>
+
+        <h5 class="card-title">Changing Roles</h5>
+        <p>
+            When logged in as an administrator, or operator, navigate to <code>/users</code> and find the chosen user to edit. Select the <code>Role</code> column and choose from the options provided. The user role will automatically update after selecting and flash green to indicate the change was successful.
+        </p>
+        <img src="/img/user_roles.png">
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block html_footer %}
+{% endblock %}

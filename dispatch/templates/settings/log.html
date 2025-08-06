@@ -1,0 +1,37 @@
+{% extends "master.html" %}
+
+{% block title %}
+Log
+{% endblock %}
+
+{% block html_head %}
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Dispatch Log</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="/settings">Settings</a></li>
+      <li class="breadcrumb-item active">Log</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body" width="100%">
+      <h5 class="card-title"></h5>
+      <div style="overflow-y:auto;height:600px;">
+        {% autoescape false %}
+        {{ content| replace('\n','<br>') }}
+        {% endautoescape %}
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block html_footer %}
+{% endblock %}

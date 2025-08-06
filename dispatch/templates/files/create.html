@@ -1,0 +1,67 @@
+{% extends "master.html" %}
+
+{% block title %}
+Create
+{% endblock %}
+
+{% block html_head %}
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Create</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item"><a href="/">File</a></li>
+      <li class="breadcrumb-item active">Create</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+  <div class="card-body" width="100%">
+    <h5 class="card-title">Create New File</h5>
+    <form action="/file/create" method="post" name="create_file" enctype="multipart/form-data">
+      <div class="row gy-4">
+        <div class="col-md-10">
+          <label>File Name</label>
+          <input type="text" class="form-control" name="filename" placeholder="" required>
+        </div>
+
+        <div class="col-md-10">
+          <label>Custom Alias</label>
+          <input type="text" class="form-control" name="alias" placeholder="(Optional)">
+        </div>
+
+        <div class="col-md-10">
+          <label>Access Permissions</label>
+          <select name="access" class="form-control">
+            <option value="1">Public</option>
+            <option value="2">Public Once</option>
+            <option value="3" selected>Private</option>
+          </select>
+        </div>
+
+        <div class="col-md-12">
+          <label>Content</label>
+          <textarea class="form-control" name="file_content" rows="6" placeholder="" required></textarea>
+        </div>
+
+        <div class="col-md-3">
+          <button style="background-color:#42B41C;border-color:#42B41C;" class="btn btn-primary w-100" type="submit">
+            <i class="bi bi-plus-circle-fill"></i>&nbsp;
+            Create
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+{{ status_msg }}
+{% endblock %}

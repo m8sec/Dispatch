@@ -1,0 +1,67 @@
+{% extends "master.html" %}
+
+{% block title %}
+Download
+{% endblock %}
+
+{% block html_head %}
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Download</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item"><a href="/">File</a></li>
+      <li class="breadcrumb-item active">Download</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+  <div class="card-body" width="100%">
+    <h5 class="card-title">Get File from URL</h5>
+    <form action="/file/download" method="post" name="download_file" enctype="multipart/form-data">
+      <div class="row gy-4">
+        <div class="col-md-10">
+          <label>URL</label>
+          <input type="text" class="form-control" name="url" placeholder="">
+        </div>
+
+        <div class="col-md-10">
+          <label>New File Name</label>
+          <input type="text" class="form-control" name="filename" placeholder="(Optional)">
+        </div>
+
+        <div class="col-md-10">
+          <label>Custom Alias</label>
+          <input type="text" class="form-control" name="alias" placeholder="(Optional)">
+        </div>
+
+        <div class="col-md-10">
+          <label>Access Permission</label>
+          <select name="access" class="form-control">
+            <option value="1">Public</option>
+            <option value="2">Public Once</option>
+            <option value="3" selected>Private</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <button style="background-color:#42B41C;border-color:#42B41C;" class="btn btn-primary w-100" type="submit">
+            <i class="bi bi-globe"></i>&nbsp;
+            Download
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+{{ status_msg }}
+{% endblock %}

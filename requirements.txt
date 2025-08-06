@@ -1,0 +1,6 @@
+flask
+gevent
+requests
+PyJWT
+MarkupSafe
+pyOpenSSL

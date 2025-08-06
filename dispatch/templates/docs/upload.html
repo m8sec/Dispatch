@@ -1,0 +1,249 @@
+{% extends "master.html" %}
+
+{% block title %}
+Docs > Upload
+{% endblock %}
+
+{% block html_head %}
+<link rel="stylesheet" href="/static/vendor/highlightjs/default.min.css">
+<link rel="stylesheet" href="/static/vendor/highlightjs/darcula.css">
+<script src="/static/vendor/highlightjs/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<style>
+    pre {
+        width:85%;
+        align:left;
+        font-size: 10pt;
+        padding:5px 0 5px 0;
+    }
+
+    .upload_methods li {
+        width:65%;
+        padding-top: 10px;
+    }
+
+    li{
+        font-size: 10pt;
+        margin: 3px 0;
+    }
+
+    img {
+        border: 1px solid black;
+        margin:10px 0 20px 0;
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Uploading Files</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="#">Documentation</a></li>
+      <li class="breadcrumb-item active">Upload</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body" width="100%">
+        <h5 class="card-title">Overview</h5>
+        <p>
+            Dispatch provides various methods for uploading files through the <a href="#web_ui">web interface</a> or
+            <a href="#api">API</a>. The goal in creating the application was to accommodate all workflows
+            and make OPSEC more achievable.
+        </p>
+
+        <h5 class="card-title"><a id="web_ui">Web Interface</a></h5>
+            <div style="display:flex;align-items:center;justify-content:left;">
+                <img src="/img/upload_methods.png">
+                <ul class="upload_methods">
+                    <li><b>Upload</b> - Add a local file from your computer
+                    <li><b>Download</b> - Fetch or download files from the internet (GitHub, GitLab, etc.)
+                    <li><b>Create</b> - Use the text input fields to type or Copy/Paste a file.
+                    <li style="list-style-type: none"><b>Note:</b> <i>Directory changes made via console session or <code>SCP</code> will automatically be reflected in the file listing with randomized aliases.</i></li>
+                </ul>
+            </div>
+
+        <h5 class="card-title"><a id="api">Upload API</a></h5>
+        <p>
+        Outside of the web interface, Dispatch provides an API endpoint for uploading files at <code>/api/file/upload</code>. This can be used to upload new files programmatically and easily integrate into your existing CI/CD pipeline.
+        </p>
+
+        <b>Requirements:</b>
+        <ul style="padding-top:10px;">
+            <li>Dispatch user API Key</li>
+            <li><code>Administrator</code> or <code>Upload Only</code> user role</li>
+            <li>Source IP listed in "Login Restrictions" settings (<i>if applied)</i></li>
+        </ul>
+
+        <h5 class="card-title">Examples</h5>
+        <ul>
+            <li><a href="#urllib3">Python Urllib3 (standard libraries)</a></li>
+            <li><a href="#requests">Python Requests</a></li>
+            <li><a href="#webclient">Powershell WebClient</a></li>
+            <li><a href="#VS_Events">Setup Visual Studio Post-Build Event</a></li>
+        </ul>
+
+        <p style="margin-bottom:25px;">
+            <i>The examples below use the default auth header "X-Dispatch-Auth", easily changed in config.py</i>
+        </p>
+
+        <h5 class="card-title"><a id="urllib3">Python Urllib3</a></h5>
+        Upload files to Dispatch using urllib3 and all standard libraries:
+        <pre><code class="language-python">
+import urllib3
+urllib3.disable_warnings()
+
+url = "https://127.0.0.1/api/file/upload"
+headers = {'X-Dispatch-Auth': 'XXXXXXX'}
+
+with open('MyFile.txt', 'rb') as f:
+        data={'file': ('MyFile.txt', f.read()),
+              'alias':'MyFileAlias.txt',
+              'access': 2}
+
+        http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+        resp = http.request('POST', url, data, headers)
+        print(resp.status, resp.data)
+        </code></pre>
+
+
+        <h5 class="card-title"><a id="requests">Python Requests</a></h5>
+        Upload files to Dispatch using the Python <a href="https://github.com/psf/requests">Requests</a> library:
+        <pre><code class="language-python">
+from requests import post
+
+url = "https://127.0.0.1/api/file/upload"
+headers = {'X-Dispatch-Auth': 'XXXXXXX'}
+data={'alias':'MyFileAlias.txt', 'access': 2}
+
+with open('MyFile.txt', 'rb') as f:
+    file = {'file':('MyFile.txt', f.read())
+    resp = post(url, verify=False, headers=headers, data=data, files=file)
+    print(resp.status_code, resp.text)
+        </code></pre>
+
+
+        <h5 class="card-title"><a id="webclient">Powershell WebClient</a></h5>
+        Use PowerShell's webclient to upload files to Dispatch:
+        <pre><code class="language-c#">
+$Uri = 'https://127.0.0.1/api/file/upload'
+$ApiKey = 'XXXXXXX'
+
+$Access = 2
+$Alias = 'MyFileAlias.txt'
+$FilePath = 'MyFile.txt'
+
+$FileContent = [IO.File]::ReadAllBytes($FilePath)
+$Boundary = [System.Guid]::NewGuid().ToString()
+
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+$webClient = New-Object System.Net.WebClient
+$webClient.Headers.Add("X-Dispatch-Auth", $ApiKey)
+$webClient.Headers.Add("Content-Type", "multipart/form-data; boundary=$Boundary")
+
+$BoundaryBytes = [System.Text.Encoding]::ASCII.GetBytes("`r`n--$Boundary`r`n")
+$EndBoundaryBytes = [System.Text.Encoding]::ASCII.GetBytes("`r`n--$Boundary--`r`n")
+
+$stream = [System.IO.MemoryStream]::new()
+$stream.Write($BoundaryBytes, 0, $BoundaryBytes.Length)
+
+$AliasBytes = [System.Text.Encoding]::ASCII.GetBytes("Content-Disposition: form-data; name=`"alias`"`r`n`r`n$Alias")
+$stream.Write($AliasBytes, 0, $AliasBytes.Length)
+$stream.Write($BoundaryBytes, 0, $BoundaryBytes.Length)
+
+$AccessBytes = [System.Text.Encoding]::ASCII.GetBytes("Content-Disposition: form-data; name=`"access`"`r`n`r`n$Access")
+$stream.Write($AccessBytes, 0, $AccessBytes.Length)
+$stream.Write($BoundaryBytes, 0, $BoundaryBytes.Length)
+
+$FileHeaderBytes = [System.Text.Encoding]::ASCII.GetBytes("Content-Disposition: form-data; name=`"file`"; filename=`"$(Split-Path -Leaf $FilePath)`"`r`nContent-Type: application/octet-stream`r`n`r`n")
+$stream.Write($FileHeaderBytes, 0, $FileHeaderBytes.Length)
+$stream.Write($FileContent, 0, $FileContent.Length)
+
+$stream.Write($EndBoundaryBytes, 0, $EndBoundaryBytes.Length)
+
+$responseBytes = $webClient.UploadData($Uri, $stream.ToArray())
+$responseString = [System.Text.Encoding]::UTF8.GetString($responseBytes)
+Write-Host "Upload Successful!"
+Write-Host $responseString
+        </code></pre>
+
+    <h5 class="card-title"><a id="VS_Events">Setup Visual Studio Post-Build Event</a></h5>
+    Create a Post-Build event in Visual Studio to automatically push newly compiled payloads to Dispatch:
+    <ol>
+        <li style="margin:15px 0 5px 0;">
+        Create the following PowerShell script (<code>Dispatch_Upload.ps1</code>) in a shared location, which accepts filenames via CMD args and uploads them to Dispatch.
+        <pre><code class="language-c#">
+try {
+    $Uri = 'https://127.0.0.1/api/file/upload'
+    $ApiKey = 'XXXXXXX'
+
+    $Access = 2
+    $Alias = ""
+    $FilePath = $args[0]
+
+    Write-Host "Uploading File to Dispatch Server..."
+    $FileContent = [IO.File]::ReadAllBytes($FilePath)
+    $Boundary = [System.Guid]::NewGuid().ToString()
+
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+    $webClient = New-Object System.Net.WebClient
+    $webClient.Headers.Add("X-Dispatch-Auth", $ApiKey)
+    $webClient.Headers.Add("Content-Type", "multipart/form-data; boundary=$Boundary")
+
+    $BoundaryBytes = [System.Text.Encoding]::ASCII.GetBytes("`r`n--$Boundary`r`n")
+    $EndBoundaryBytes = [System.Text.Encoding]::ASCII.GetBytes("`r`n--$Boundary--`r`n")
+
+    $stream = [System.IO.MemoryStream]::new()
+    $stream.Write($BoundaryBytes, 0, $BoundaryBytes.Length)
+
+    $AliasBytes = [System.Text.Encoding]::ASCII.GetBytes("Content-Disposition: form-data; name=`"alias`"`r`n`r`n$Alias")
+    $stream.Write($AliasBytes, 0, $AliasBytes.Length)
+    $stream.Write($BoundaryBytes, 0, $BoundaryBytes.Length)
+
+    $AccessBytes = [System.Text.Encoding]::ASCII.GetBytes("Content-Disposition: form-data; name=`"access`"`r`n`r`n$Access")
+    $stream.Write($AccessBytes, 0, $AccessBytes.Length)
+    $stream.Write($BoundaryBytes, 0, $BoundaryBytes.Length)
+
+    $FileHeaderBytes = [System.Text.Encoding]::ASCII.GetBytes("Content-Disposition: form-data; name=`"file`"; filename=`"$(Split-Path -Leaf $FilePath)`"`r`nContent-Type: application/octet-stream`r`n`r`n")
+    $stream.Write($FileHeaderBytes, 0, $FileHeaderBytes.Length)
+    $stream.Write($FileContent, 0, $FileContent.Length)
+
+    $stream.Write($EndBoundaryBytes, 0, $EndBoundaryBytes.Length)
+
+    $responseBytes = $webClient.UploadData($Uri, $stream.ToArray())
+    $responseString = [System.Text.Encoding]::UTF8.GetString($responseBytes)
+    Write-Host "Upload Successful!"
+    Write-Host $responseString
+}
+catch {
+    Write-Warning "Upload Failed: $_"
+}
+        </code></pre>
+        </li>
+
+        <li style="margin:15px 0 5px 0;">
+        In the Solution Explorer, right-click on the project name and select <code>Properties</code>.
+        </li>
+
+        <li style="margin:15px 0 5px 0;">
+        Select <code>Build Events</code> and add the following Post-build command referencing the PowerShell script above:
+        <pre><code>powershell -exec bypass -NoProfile -NonInteractive -c "C:\Dispatch_Upload.ps1 $(TargetPath)"</code></pre>
+        <img src="/img/post_build_1.png">
+        </li>
+
+        <li style="margin:15px 0 5px 0;">
+        Now, your compiled builds will automatically be uploaded to Dispatch with a randomized alias. The final URL will be returned in the build output, as shown below:
+        </li>
+        <img src="/img/post_build_2.png">
+    </ol>
+    </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+{% endblock %}

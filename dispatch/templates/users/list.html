@@ -1,0 +1,120 @@
+{% extends "master.html" %}
+
+{% block title %}
+Users
+{% endblock %}
+
+{% block html_head %}
+    <style>
+        .actions {
+            padding:0;
+            margin:0;
+        }
+
+        .actions button{
+            color:black;
+            width: 30px;
+            text-align: center;
+            margin-right: 3px;
+            padding: 2px 1px 2px 1px;
+            border: 0 solid #42B41C;
+            background-color: #42B41C !important;
+        }
+
+        .page-link, .active>.page-link, .page-link.active {
+            color:black;
+            border: 0 solid #42B41C;
+            background-color: #42B41C;
+        }
+
+        .actions i{
+            padding: 0px;
+        }
+
+        .actions button:hover{
+            color:black;
+            border: 0 solid #4bd11e;
+            background-color: #4bd11e !important;
+        }
+
+        .actions button:active{
+            color:white;
+            border: 1 solid #4bd11e;
+            background-color: #1c1c1c !important;
+        }
+
+        div.dataTables_filter {
+            float:right!important;
+        }
+        .dataTable{
+            /*table-layout: fixed;*/
+            width: 100%;
+        }
+
+        .access_perms {
+            border:0;
+            font-size:13px;
+            background-color:#f0ebeb;
+        }
+
+        .access_perms:focus {
+            background-color:#f0ebeb;
+            z-index: 10;
+            box-shadow: none;
+        }
+
+        #file_listing {
+            font-size:14px;
+        }
+
+        .top_btn {
+            float:right;
+            margin-left:auto;
+            background-color:#42B41C;
+            border-color:#42B41C;
+        }
+    </style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Users</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item active">Users</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body" style="width:100%;">
+      <h5 class="card-title"></h5>
+      <table class="table table-bordered" id="Users" style="cursor:pointer;width:100%" cellspacing="0">
+        <thead width="100%">
+            <tr>
+                <th><i class="bi bi-arrow-down-up"></i>&nbsp;&nbsp;Username</th>
+                <th><i class="bi bi-arrow-down-up"></i>&nbsp;&nbsp;Created</th>
+                <th><i class="bi bi-arrow-down-up"></i>&nbsp;&nbsp;Last Login</th>
+                <th></i>&nbsp;&nbsp;Role</th>
+                <th style="min-width:90px !important;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="height:0px;border:0px;display:none !important;">
+            </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+{% endblock %}
+
+{% block html_footer %}
+  <script src="https://cdn.datatables.net/1.10.20/js/jquery.dataTables.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/1.10.20/js/dataTables.bootstrap4.min.js" crossorigin="anonymous"></script>
+  <script>ListUsers();</script>
+{% endblock %}

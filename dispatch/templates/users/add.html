@@ -1,0 +1,170 @@
+{% extends "master.html" %}
+
+{% block title %}
+  {% if not user %}
+  Add User
+  {% else %}
+  Edit User
+  {% endif %}
+{% endblock %}
+
+{% block html_head %}
+  <style>
+      button:hover{
+          border-color: #4bd11e;
+          background-color: #4bd11e !important;
+      }
+
+    .actions {
+          padding:0;
+          margin:0;
+      }
+
+      .actions button{
+          color:black;
+          width: 30px;
+          text-align: center;
+          margin-right: 0px;
+          padding: 2px 1px 2px 1px;
+          border: 0 solid #42B41C;
+          background-color: #42B41C !important;
+      }
+
+      .page-link, .active>.page-link, .page-link.active {
+          color:black;
+          border: 0 solid #42B41C;
+          background-color: #42B41C;
+      }
+
+      .actions i{
+          padding: 0px;
+      }
+
+      .actions button:hover{
+          color:black;
+          border: 0 solid #4bd11e;
+          background-color: #4bd11e !important;
+      }
+
+      .actions button:active{
+          color:white;
+          border: 1 solid #4bd11e;
+          background-color: #1c1c1c !important;
+      }
+  </style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>
+    {% if not user %}
+    Add User
+    {% else %}
+    Edit User
+    {% endif %}
+  </h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item"><a href="/users">User</a></li>
+      <li class="breadcrumb-item active">
+        {% if not user %}
+        Add
+        {% else %}
+        Edit
+        {% endif %}
+      </li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+  <div class="card-body" width="100%">
+    <h5 class="card-title"></h5>
+    <form action="{{ '/user/add' if not user else '/user/edit' }}" method="post" name="create_file" enctype="multipart/form-data">
+      <div class="row gy-4">
+          {% if user %}
+          <input type="hidden" name="id" value="{{ user['id'] }}">
+          {% endif %}
+
+        <div class="col-md-10">
+          <label>Username</label>
+          {% if not user %}
+          <input type="text" class="form-control" name="username" required>
+          {% else %}
+          <input type="text" class="form-control" style="background-color:#f0f4f7;" name="username" value="{{ user['username'] }}" readonly="readonly">
+          {% endif %}
+        </div>
+
+        {% if user %}
+        <div class="col-md-10">
+          <label>API Key</label>
+          <div class="input-group actions">
+            <input type="password" class="form-control" name="api_key" id="api_key" style="background-color:#f0f4f7;" value="{{ user['api_key'] }}" readonly="readonly">
+            <button type="button" style="background-color:black;" class="btn btn-success btn-sm" onclick="updateAPIKey({{ user['id'] }})">
+              <i class="bi bi-arrow-clockwise" title="Generate"></i>
+            </button>
+            </button>
+          </div>
+        </div>
+
+        <div class="col-md-10" style="margin-top:4px;">
+            <input type="checkbox" style="padding-left:5px;" onclick="ToggleKey()">&nbsp;Show API Key
+        </div>
+        {% endif %}
+
+        <div class="col-md-10">
+          <label>Password</label>
+          <div id="msg_1"></div>
+          <input type="password" class="form-control" name="password" id="password" onkeyup="validatePassword(this.value);" required>
+        </div>
+
+        <div class="col-md-10">
+          <label>Confirm Password</label>
+          &nbsp;&nbsp;<span id="msg_2"></span>
+          <input type="password" class="form-control" name="confirm_password" id="confirm_password" onkeyup="confirmPassword();" required>
+        </div>
+
+        {% if not user %}
+        <div class="col-md-10">
+          <label>Role</label>
+          <select name="user_role" class="form-control" required>
+            <option value="0" selected>Disabled</option>
+            <option value="1">Download Only</option>
+            <option value="2">Upload Only</option>
+            {% if token['role'] > 3 %}
+              <option value="3">Operator</option>
+              <option value="4">Administrator</option>
+            {% endif %}
+          </select>
+        </div>
+        {% endif %}
+
+        <div class="col-md-3">
+          <button style="background-color:#42B41C;border-color:#42B41C;" class="btn btn-primary w-100" type="submit">
+            <i class="bi bi-person-plus-fill"></i>&nbsp;
+            {{ 'Change Password' if user else 'Add User' }}
+          </button>
+        </div>
+
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+  {{ status_msg }}
+  <script>
+    function ToggleKey() {
+      var x = document.getElementById("api_key");
+      if (x.type === "password") {
+        x.type = "text";
+      } else {
+        x.type = "password";
+      }
+    }
+  </script>
+{% endblock %}

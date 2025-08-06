@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>Dispatch | {% block title %}{% endblock %}</title>
+  <meta content="m8sec" name="author">
+  <meta content="Dispatch - Evasive payload hosting & delivery server." name="description">
+
+  <link href="/img/favicon/favicon.ico" rel="icon">
+  <link href="/img/favicon/apple-touch-icon.png" rel="apple-touch-icon">
+
+  <link href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,600,600i,700,700i|Nunito:300,300i,400,400i,600,600i,700,700i|Poppins:300,300i,400,400i,500,500i,600,600i,700,700i" rel="stylesheet">
+
+  <link href="/static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <link href="/static/css/style.css" rel="stylesheet">
+
+  <style>
+    .param_key {
+      margin:0;
+      font-size:14px;
+      padding: 10px 15px !important;
+      text-align: left !important;
+      line-height: 0;
+      font-weight: 400;
+      color: var(--bs-dropdown-link-color);
+      white-space: nowrap;
+    }
+
+    .param_key i{
+      margin-right: 10px;
+      font-size: 18px;
+      line-height: 0;
+    }
+  </style>
+
+  {% block html_head %}
+  {% endblock %}
+</head>
+
+<body>
+
+  <!-- ======= Banner ======= -->
+  <header id="header" class="header fixed-top d-flex align-items-center">
+    <div class="d-flex align-items-center justify-content-between">
+      <a href="/" class="logo d-flex align-items-center">
+        <i style="font-size:22px;color:#4bd11e;" class="bi bi-arrow-left-right"></i>&nbsp;&nbsp;
+        <span class="d-none d-lg-block">Dispatch</span>
+      </a>
+      <i class="bi bi-list toggle-sidebar-btn"></i>
+    </div>
+
+    <!-- ======= User Icon Dropdown ======= -->
+    <nav class="header-nav ms-auto">
+      <ul class="d-flex align-items-center">
+        <li class="nav-item dropdown pe-3">
+          <a class="nav-link nav-profile d-flex align-items-center pe-0" href="#" data-bs-toggle="dropdown">
+            <i style="font-size:25px;" class="rounded-circle bi bi-person-circle"></i>
+            <span class="d-none d-md-block dropdown-toggle ps-2">
+              {{ token['user'] }}
+            </span>
+          </a>
+
+          <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow profile">
+            <li class="dropdown-header">
+              <h6 id="curr_user">{{ token['user'] }}</h6>
+              <span id="curr_role">{{ token['role_name'] }}</span>
+            </li>
+
+            <li>
+              <hr class="dropdown-divider">
+            </li>
+
+            {% if config['param_rotation'] %}
+            <li class="dropdown-header param_key">
+              <i class="bi bi-shield-lock" title="Enabled"></i>
+              Key:
+              <span id="ParamKey" style="color:var(--bs-dropdown-header-color);">?{{ config['param_key'] }}</span>
+              <span style="float:right;">
+                <a href="#" onclick="copyParamKey(event, this)">
+                  <i class="bi bi-clipboard" title="Click to copy"></i>
+                </a>
+              </span>
+            </li>
+
+            <li>
+              <hr class="dropdown-divider">
+            </li>
+            {% endif %}
+
+            <li class="dropdown-header param_key">
+              <i class="bi bi-key-fill"></i>API Key
+              <span style="float:right;">
+                <a href="#" onclick="copyAPIKey(event, this)">
+                  <i class="bi bi-clipboard" title="Click to copy"></i>
+                </a>
+              </span>
+            </li>
+
+            <li>
+              <hr class="dropdown-divider">
+            </li>
+
+            <li>
+              <a class="dropdown-item d-flex align-items-center" href="/user/edit?id={{ token['id'] }}">
+                <i class="bi bi-person-lock"></i>
+                <span>User Settings</span>
+              </a>
+            </li>
+
+            <li>
+              <hr class="dropdown-divider">
+            </li>
+
+            <li>
+              <a class="dropdown-item d-flex align-items-center" href="/logout">
+                <i class="bi bi-box-arrow-right"></i>
+                <span>Log Out</span>
+              </a>
+            </li>
+          </ul><!-- End Profile Dropdown Items -->
+        </li><!-- End Profile Nav -->
+      </ul>
+    </nav>
+  </header>
+
+  <!-- ======= Nav sidebar ======= -->
+  <aside id="sidebar" class="sidebar">
+
+    <ul class="sidebar-nav" id="sidebar-nav">
+
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/">
+          <i class="bi bi-hdd"></i>
+          <span>Files</span>
+        </a>
+      </li>
+
+      {% if token['role'] > 1 %}
+      <li class="nav-item">
+        <a class="nav-link collapsed show" data-bs-target="#upload-nav" data-bs-toggle="collapse" href="#">
+          <i class="bi bi-plus"></i>
+          <span>Add File</span>
+          <i class="bi bi-chevron-down ms-auto"></i>
+        </a>
+        <ul id="upload-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+          <li>
+            <a href="/file/upload">
+              <i class="bi bi-cloud-arrow-up" style="font-size:15px;"></i>
+              <span>Upload</span>
+            </a>
+          </li>
+
+          <li>
+            <a href="/file/download">
+              <i class="bi bi-globe" style="font-size:15px;"></i>
+              <span>Download</span>
+            </a>
+          </li>
+
+          <li>
+            <a href="/file/create">
+              <i class="bi bi-tools" style="font-size:15px;"></i>
+              <span>Create</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/file/cradles">
+          <i class="bi bi-cloud-arrow-down"></i>
+          <span>Cradles</span>
+        </a>
+      </li>
+
+      <br>
+      <li class="nav-heading">Settings</li>
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/settings">
+          <i class="bi bi-gear"></i>
+          <span>General</span>
+        </a>
+      </li>
+
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/settings/access">
+          <i class="bi bi-shield-check"></i>
+          <span>Access Control</span>
+        </a>
+      </li>
+
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/settings/proxy">
+          <i class="bi bi-shuffle"></i>
+          <span>
+            Proxy
+            <span class="badge bg-warning text-dark rounded-pill ms-2">Beta</span>
+          </span>
+        </a>
+      </li>
+      {% endif %}
+
+
+      <br>
+      <li class="nav-heading">Administration</li>
+      {% if token['role'] > 3 %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" data-bs-target="#user-nav" data-bs-toggle="collapse" href="#">
+          <i class="bi bi-people-fill"></i>
+          <span>Users</span>
+          <i class="bi bi-chevron-down ms-auto"></i>
+        </a>
+        <ul id="user-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+          <li>
+            <a href="/users">
+              <i class="bi bi-person-lines-fill" style="font-size:15px;"></i>
+              <span>List</span>
+            </a>
+          </li>
+
+          <li>
+            <a href="/user/add">
+              <i class="bi bi-person-fill-add" style="font-size:15px;"></i>
+              <span>Add</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+      {% endif %}
+
+      {% if token['role'] > 2 %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/settings/log">
+          <i class="bi bi-code-slash"></i>
+          <span>Log</span>
+        </a>
+      </li>
+      {% endif %}
+
+      <br>
+      <li class="nav-heading">Help</li>
+      <li class="nav-item">
+        <a class="nav-link collapsed" data-bs-target="#doc-nav" data-bs-toggle="collapse" href="#">
+          <i class="bi bi-info-circle"></i>
+          <span>Documentation</span>
+          <i class="bi bi-chevron-down ms-auto"></i>
+        </a>
+        <ul id="doc-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
+          <li>
+            <a href="/docs/users">
+              <span>User Roles</span>
+            </a>
+          </li>
+          <li>
+            <a href="/docs/upload">
+              <span>Uploading Files</span>
+            </a>
+          </li>
+          <li>
+            <a href="/docs/files">
+              <span>File Permissions</span>
+            </a>
+          </li>
+          <li>
+            <a href="/docs/access">
+              <span>Access Restrictions</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </aside>
+
+  <!-- ======= Main Body ======= -->
+  <main id="main" class="main">
+
+    <!-- ======= Title & breadcrumb ======= -->
+    {% block bread_crumb %}{% endblock %}
+
+   <!-- =========  PAGE NOTIFICATIONS ========= -->
+   <div id="notification" style="display: none;" class="alert" role="alert"></div>
+
+
+    <!-- ======= Page Content ======= -->
+    <section class="section">
+      <div class="row">
+        <div class="col-lg-12">
+
+          {% block html_content %}
+          {% endblock %}
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======= Footer ======= -->
+  <footer id="footer" class="footer">
+    <div class="copyright">
+      &copy;2025 <strong><span>Dispatch {{ config['version'] }}</span></strong>
+      by <a href="https://github.com/m8sec">m8sec</a>
+    </div>
+    <div class="credits">
+      Theme by <a href="https://bootstrapmade.com/">BootstrapMade</a>
+    </div>
+  </footer>
+
+  <a href="#" class="back-to-top d-flex align-items-center justify-content-center"><i class="bi bi-arrow-up-short"></i></a>
+  
+  <!-- ======= JS Resources ======= -->
+  <script src="https://code.jquery.com/jquery-3.4.1.min.js" crossorigin="anonymous"></script>
+  <script src="/static/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/vendor/tinymce/tinymce.min.js"></script>
+  <script src="/static/js/main.js"></script>
+  <script src="/js/dispatch.js"></script>
+  {% block html_footer %}{% endblock %}
+</body>
+</html>

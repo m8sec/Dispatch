@@ -1,0 +1,72 @@
+{% extends "master.html" %}
+
+{% block title %}
+Docs > Access
+{% endblock %}
+
+{% block html_head %}
+    <style>
+        .restrictions li {
+            width:65%;
+            padding-top: 25px;
+        }
+
+        img {
+            border: 1px solid black;
+            margin:10px 0 5px 0;
+        }
+    </style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Access Restrictions</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="#">Documentation</a></li>
+      <li class="breadcrumb-item active">Access</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body" width="100%">
+        <h5 class="card-title">Overview</h5>
+        Built with offensive security in mind, Dispatch provides several methods of restricting access from unauthorized users:
+
+        <ul class="restrictions">
+                <li><b>Login Restrictions</b> - Login restrictions are found under <a href="/settings">settings</a> and
+                    can block all unauthorized <code>source IP</code> addresses from accessing the Dispatch web interface.
+                    This protection focuses on the privacy of the web interface and preventing login or viewing capabilities.
+                </li>
+
+                <li><b>Access Restrictions</b> - Access restrictions focus on the privacy of stored files and have
+                    the ability to deny requests based on <code>source IP</code>, <code>User-Agent</code>, or
+                    <code>URL Parameters</code>. This protection sits in-front of file permissions and requires all
+                    requests meet the criteria outlined in the <a href="/settings/access">Access Restrictions</a> configurations.
+                </li>
+        </ul>
+        <i>Why? - this split configuration allows operators to whitelist target addresses while still protecting the admin interface.</i>
+
+        <p>
+            <h5 class="card-title">Parameter Key Rotation?</h5>
+            This is the newest form of access control, which uses rotating parameters as key values to permit access.
+            Even public files can be protected with key rotation for an easy, effective means of stopping blue teams from
+            robbing your payloads!
+        </p>
+        <p>
+            When applied, rotating keys are automatically applied to alias links in the web interface or can be manually
+            copied in the user menu in the upper right corner:
+        </p>
+        <img src="/img/param_key.png">
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block html_footer %}
+{% endblock %}

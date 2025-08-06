@@ -1,0 +1,108 @@
+{% extends "master.html" %}
+
+{% block title %}
+Reverse Proxy
+{% endblock %}
+
+{% block html_head %}
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Reverse proxy</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="/settings">Settings</a></li>
+      <li class="breadcrumb-item active">Proxy</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card" style="width:80%;">
+  <div class="card-body">
+    <h5 class="card-title">
+        Configuration
+        <span class="badge bg-warning text-dark rounded-pill ms-2">Beta</span>
+    </h5>
+      <div class="row gy-4">
+        <div class="col-md-12">
+            Use the table below to establish reverse proxy routes for redirection. 
+            Ensure proxy routes do not conflict with existing Dispatch pages or files, which will take precedence over the proxy.
+        </div>
+
+        <div class="col-md-12">
+            Remove routes by clicking the "✖" button next to each row.
+        </div>
+
+        <div class="col-md-12">
+            <form action="/settings/proxy" method="post" id="routeForm">
+                <table class="table table-bordered" id="routesTable">
+                    <thead>
+                        <tr>
+                            <th>Path</th>
+                            <th>Redirect URL</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dynamically Load Stored Routes -->
+                        {% for path, redirect_url in routes.items() if path not in ['/', '*'] %}
+                        <tr>
+                            <td><input type="text" name="path[]" class="form-control" required value="{{ path }}"></td>
+                            <td><input type="url" name="redirect[]" class="form-control" required value="{{ redirect_url }}"></td>
+                            <td><button type="button" class="btn btn-danger removeRow">✖</button></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button style="background-color:#333;border-color:#333;" class="btn btn-primary" type="button" id="addRow">
+                    + Add Row
+                </button>
+                <button style="background-color:#42B41C;border-color:#42B41C;" class="btn btn-primary"type="submit">
+                    <i class="bi bi-shield-lock"></i>&nbsp;
+                    Save Routes
+                </button>
+            </form>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+<script>
+    $(document).ready(function () {
+        $("#addRow").click(function () {
+            $("#routesTable tbody").append(`
+                <tr>
+                    <td><input type="text" name="path[]" class="form-control path-input" required placeholder="/example-path"></td>
+                    <td><input type="url" name="redirect[]" class="form-control" required placeholder="Enter redirect URL"></td>
+                    <td><button type="button" class="btn btn-danger removeRow">✖</button></td>
+                </tr>
+            `);
+        });
+
+        // Remove a row when clicking "✖"
+        $(document).on("click", ".removeRow", function () {
+            $(this).closest("tr").remove();
+        });
+
+        // Prevent duplicate paths
+        $(document).on("input", ".path-input", function () {
+            let inputVal = $(this).val().trim();
+            let exists = $(".path-input").not(this).filter(function () {
+                return $(this).val().trim() === inputVal;
+            }).length > 0;
+
+            if (exists) {
+                alert("This path is already added!");
+                $(this).val(""); // Reset field
+            }
+        });
+    });
+</script>
+{% endblock %}

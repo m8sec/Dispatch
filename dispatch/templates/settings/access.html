@@ -1,0 +1,80 @@
+{% extends "master.html" %}
+
+{% block title %}
+Access
+{% endblock %}
+
+{% block html_head %}
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Access</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="/settings">Settings</a></li>
+      <li class="breadcrumb-item active">Access</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card" style="width:80%;">
+  <div class="card-body">
+    <form action="/settings/access" method="post" name="create_file" enctype="multipart/form-data">
+      <h5 class="card-title">Access Restrictions</h5>
+      <div class="row gy-4">
+        <div class="col-md-12">
+            The following access restrictions can be used to prevent unauthorized users from downloading Dispatch payloads.
+            <ul style="margin-top:8px;">
+                <li>Once configured, even authenticated requests will be required to meet these restrictions.</li>
+                <li>If no restrictions are set all incoming requests will be accepted.</li>
+            </ul>
+            ⚠️ - <i style="color:dark-grey;">Access controls only apply to alias download paths. To block application access, modify the login restriction <a href="/settings">settings</a>. This split configuration allows operators to whitelist target addresses while still protecting the admin interface.</i>
+        </div>
+
+        <div class="col-md-12">
+            <div style="padding-bottom:8px;">
+                <b>IP Address</b><br>
+                <i>Only accept requests from the following source addresses:</i>
+            </div>
+            <textarea class="form-control" name="allow_ip" rows="6" placeholder="(One per line)">{{ '\n'.join(config['allow_ip']) }}</textarea>
+        </div>
+
+        <div class="col-md-12">
+            <div style="padding-bottom:8px;">
+                <b>User-Agent</b><br>
+                <i>Only accept requests with the following User-Agent values:</i>
+            </div>
+            <textarea class="form-control" name="allow_ua" rows="6" placeholder="(One per line)">{{ '\n'.join(config['allow_ua']) }}</textarea>
+        </div>
+
+          <div class="col-md-12">
+            <div style="padding-bottom:8px;">
+                <b>Parameter Key Rotation</b><br>
+                <i>Use the rotating URL parameter displayed in the user dropdown menu as low-maintenance, but
+                highly effective, means of authentication. This value is designed to reset after every use.</i>
+            </div>
+
+            <select name="param_rotation" class="form-control" required>
+              <option value="0" {{ 'selected' if config['param_rotation'] == 0 }}>Disabled</option>
+              <option value="1" {{ 'selected' if config['param_rotation'] == 1 }}>Enabled</option>
+            </select>
+        </div>
+
+        <div class="col-md-3">
+          <button style="background-color:#42B41C;border-color:#42B41C;" class="btn btn-primary w-100" type="submit">
+            <i class="bi bi-shield-lock"></i>&nbsp;
+            Save
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+{% endblock %}

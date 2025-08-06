@@ -1,0 +1,9 @@
+# Ignore everything
+*
+
+# But don't ignore this .gitignore file
+!.gitignore
+!gen_certs.sh
+
+# Optionally keep a placeholder file
+!.gitkeep
