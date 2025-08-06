@@ -22,7 +22,7 @@ python3 server.py --host <bind_host> --port <bind_port>
 
 ### 3. Start the client directing it at Dispatch redirector
 ```bash
- python3 client.py --server https://<dispatch_server>
+ python3 client.py --url https://<dispatch_server>
 ```
 
 ### 4. Interact with connected clients
