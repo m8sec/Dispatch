@@ -15,9 +15,6 @@ from string import ascii_letters, digits, punctuation, ascii_uppercase, ascii_lo
 logger = logging.getLogger('dispatch-logger')
 
 
-
-
-
 def generate_ssl_cert(cert_path, key_path, country="US", cn="Dispatch", org="Dispatch", ou="", valid=365):
     try:
         key = crypto.PKey()
