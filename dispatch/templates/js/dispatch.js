@@ -29,14 +29,14 @@ function ListFiles() {
             "pageLength": 50,
             "aoColumns": [
                 {
-                    "mData"    : null,
+                    "mData": null,
                     "mRender": function (o) {
                         return '<a href="/file/edit?id=' + 
-                        o['id'] + 
-                        '" title="Click to Edit">' + o['filename'] + 
-                        " " + `${o['encrypt'] ? "🔒" : ""}` + 
-                        `${o['access'] == 1 ? "🌐" : ""}`+ 
-                        '</span>';
+                            o['id'] + 
+                            '" title="Click to Edit">' + o['filename'] + 
+                            " " + `${o['encrypt'] ? "🔒" : ""}` + 
+                            `${(o['access'] == 1 || o['access'] == 2) ? "🌐" : ""}` + 
+                            '</a>';
                     }
                 },
                 {
