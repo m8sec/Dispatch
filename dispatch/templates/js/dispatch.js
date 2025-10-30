@@ -31,7 +31,12 @@ function ListFiles() {
                 {
                     "mData"    : null,
                     "mRender": function (o) {
-                        return '<a href="/file/edit?id=' + o['id'] + '" title="Click to Edit">' + o['filename'] + '</span>';
+                        return '<a href="/file/edit?id=' + 
+                        o['id'] + 
+                        '" title="Click to Edit">' + o['filename'] + 
+                        " " + `${o['encrypt'] ? "🔒" : ""}` + 
+                        `${o['access'] == 1 ? "🌐" : ""}`+ 
+                        '</span>';
                     }
                 },
                 {
@@ -43,14 +48,12 @@ function ListFiles() {
                 {
                     "mData"    : null,
                     "mRender": function (o) {
+                        var key = '';
                         if ($('.param_key i')[0].title == 'Enabled') {
-                            var key = document.getElementById('ParamKey').innerHTML;
-                            var url = location.protocol + "//"+ o['ip'] + "/" + o['alias'] + key;
+                            key = document.getElementById('ParamKey').innerHTML;
                         }
-                        else {
-                            var key = false;
-                            var url = location.protocol + "//"+ o['ip'] + "/" + o['alias'];
-                        }
+                        var url = location.protocol + "//"+ o['ip'] + ":" + o['port'] + "/" + o['alias'] + key;
+                        
 
                         var html = o['alias'];
                         html += '<span style="float:right;">';
@@ -63,7 +66,8 @@ function ListFiles() {
                 },
                 {"bSortable": true, "mData": "upload_date" },
                 {"bSortable": true, "mData": "uploaded_by" },
-                {
+                {   
+                    "bSortable": true,
                     "mData"    : null,
                     "mRender": function (o) {
                         var html = '<select class="access_perms form-control" onchange="updateAccess('+o['id']+', this)">';
@@ -77,14 +81,11 @@ function ListFiles() {
                 {
                     "mData"    : null,
                     "mRender": function (o) {
+                        var key = ''
                         if ($('.param_key i')[0].title == 'Enabled') {
                             var key = document.getElementById('ParamKey').innerHTML;
-                            var url = "/" + o['alias'] + key;
                         }
-                        else {
-                            var key = false;
-                            var url = location.protocol + "//"+ o['ip'] + "/" + o['alias'];
-                        }
+                        var url = "/" + o['alias'] + key;
 
                         var html ='<div class="actions">';
                         html += '<a href="'+ url + (key == false ? '?raw=true': '&raw=true') +'" target="_blank">';
@@ -113,6 +114,11 @@ function ListFiles() {
     });
 }
 
+function resetFileTable(){
+    $('#file_listing').DataTable().destroy();
+    ListFiles();
+}
+
 function updateAccess(id, access_elm) {
     var post_data = JSON.stringify({
             id: id ? id : false,
@@ -128,6 +134,7 @@ function updateAccess(id, access_elm) {
         success: function (response) {
             access_elm.style.backgroundColor = '#42B41C';
             setTimeout(() => access_elm.style.backgroundColor = '#f0ebeb', 625);
+            resetFileTable();
         },
         error: function (request, status, error){
             access_elm.style.backgroundColor = 'red';

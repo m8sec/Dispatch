@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dispatch"
-version = "0.1.0"
+version = "0.1.2"
 license = "GPLv3"
 description = "Evasive Payload Delivery Server"
 authors = ["m8sec"]

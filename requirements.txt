@@ -1,6 +1,6 @@
 flask
+PyJWT
 gevent
 requests
-PyJWT
 MarkupSafe
 pyOpenSSL

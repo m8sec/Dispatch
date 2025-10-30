@@ -102,11 +102,14 @@ Home
         </tbody>
       </table>
     </div>
-    {% if config['param_rotation'] %}
+    
     <span style="font-size:11px;padding:5px;">
-        <i class="bi bi-arrow-clockwise"> Reload to update URLs with the latest parameter key.</i>
+        <ul style="list-style-type: none; padding:0; margin:0;">
+            <li>🔒 <i>- Encrypted file contents.</i></li>
+            <li>🌐 <i>- Public access.</i></li>
+            {% if config['param_rotation'] %}<li><i class="bi bi-arrow-clockwise"> - Reload to update parameter key in URLs.</i></li>{% endif %}
+         </ul>
     </span>
-    {% endif %}
   </div>
 
 

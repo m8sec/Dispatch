@@ -14,7 +14,6 @@ With **built-in evasion techniques**, **custom alias addresses**, and a **revers
 
 <img height="400" alt="dispatch" src="https://github.com/user-attachments/assets/c6ec329b-933d-4560-a3e8-2eeb74095b22" />
 
-
 ## ⚡ Install  
 Dispatch is designed for **Windows, Linux, and macOS** with minimal dependencies. Simply, execute the following commands to get started:  
 

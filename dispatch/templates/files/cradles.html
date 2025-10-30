@@ -55,7 +55,7 @@ DownloadCradles
 {% block html_content %}
 <div class="card">
     <div class="card-body">
-        <h5 class="card-title">Overview</h5>
+        <h4 class="card-title">Overview</h4>
         <p>
             Use the following form to generate code snippets for downloading files from the Dispatch server.
             You can select the target file, specify optional headers, and provide additional command arguments for the
@@ -76,9 +76,13 @@ DownloadCradles
             <input type="text" id="cmd_args" value="" class="form-control" onchange="GenCode();">
         </div>
 
+
         <hr style="margin:30px 0 10px 0;color:black;">
 
+
         <div id="cradleBlocks">
+            <h4 class="card-title">Download Cradles</h4>
+
             <h5 class="card-title">Bash Curl</h5>
             <pre><code class="language-bash" id="curl"></code><span class="copy-btn" onclick="copyCode('curl')">
                 <i class="bi bi-clipboard"></i>
@@ -114,6 +118,51 @@ DownloadCradles
                 <i class="bi bi-clipboard"></i>
             </span></pre>
         </div>
+
+
+        <hr style="margin:30px 0 10px 0;color:black;">
+
+
+        <h4 class="card-title">Decryption Functions</h4>
+            <p>
+                ⚠️&nbsp;<b><i>Using the built-in file encryption feature?</i></b></br>
+                The following code snippets can be used to decrypt downloaded files on the target system before execution.
+            </p>
+
+            <h5 class="card-title">Python Decryption</h5>
+            <pre><code class="language-py" id="decrypt_py">def dispatch_decrypt(str_data, str_key):
+    d, k = base64.b64decode(str_data), str_key.encode()
+    return ''.join(chr(a ^ k[i % len(k)]) for i, a in enumerate(d))</code><span class="copy-btn" onclick="copyCode('decrypt_py')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">PowerShell Decryption</h5>
+            <pre><code class="language-c#" id="decrypt_ps1">function DispatchDecrypt($b64Data, $key) {
+    $data = [System.Convert]::FromBase64String($b64Data)
+    $keyBytes = [System.Text.Encoding]::UTF8.GetBytes($key)
+    $result = for ($i = 0; $i -lt $data.Length; $i++) {
+        [char]($data[$i] -bxor $keyBytes[$i % $keyBytes.Length])
+    }
+    -join $result
+}</code><span class="copy-btn" onclick="copyCode('decrypt_ps1')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">CSharp Decryption</h5>
+            <pre><code class="language-c#" id="decrypt_cs">using System;
+using System.Text;
+static string DispatchDecrypt(string b64Data, string key)
+{
+    byte[] data = Convert.FromBase64String(b64Data);
+    byte[] keyBytes = Encoding.UTF8.GetBytes(key);
+    char[] result = new char[data.Length];
+    for (int i = 0; i < data.Length; i++)
+        result[i] = (char)(data[i] ^ keyBytes[i % keyBytes.Length]);
+    return new string(result);
+}</code><span class="copy-btn" onclick="copyCode('decrypt_cs')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
     </div>
 </div>
 {% endblock %}

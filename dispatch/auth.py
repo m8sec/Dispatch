@@ -9,119 +9,63 @@ from dispatch.db import DispatchDB
 
 
 #
-# Authentication decorators
+# Core authentication decorator support function
+#
+#   user_roles:
+#     0: Disabled
+#     1: Download Only / Login req.
+#     2: Upload Only
+#     3: Operator
+#     4: Administrator
+#
+def _auth_required(min_role):
+    """Core decorator support for authentication with role checking"""
+    def decorator(func):
+        @wraps(func)
+        def _decorator(*args, **kwargs):
+            # Restrict login & api access by source IP
+            if current_app.config['allow_login'] and request.remote_addr not in current_app.config['allow_login']:
+                return redirect(current_app.config['redirect_url'], 302)
+            
+            # Try token authentication first
+            token = validateToken(request)
+            if isinstance(token, Response):
+                return token
+            elif token and token['role'] >= min_role:
+                return func(token, *args, **kwargs)
+            
+            # Try API key authentication
+            api_key = validateKey(request)
+            if api_key and api_key['role'] >= min_role:
+                return func(api_key, *args, **kwargs)
+            
+            # Authentication failed
+            return signOut() if min_role == 1 else redirect("/", 302)
+        return _decorator
+    return decorator
+
+
+#
+# Authentication decorators (supports cookies + API)
 #
 def login_required(func):
-    # Login required with no special access
-    @wraps(func)
-    def _decorator(*args, **kwargs):
-        # Restrict login access by source IP
-        if current_app.config['allow_login'] and request.remote_addr not in current_app.config['allow_login']:
-            return redirect(current_app.config['redirect_url'], 302)
-        token = validateToken(request)
-        if isinstance(token, Response):
-            return token
-        return func(token, *args, **kwargs) if token and token['role'] > 0 else signOut()
-    return _decorator
+    """Login required with no special access, download only"""
+    return _auth_required(1)(func)
 
 
 def upload_only_required(func):
-    # Login required with upload user or higher
-    @wraps(func)
-    def _decorator(*args, **kwargs):
-        # Restrict login access by source IP
-        if current_app.config['allow_login'] and request.remote_addr not in current_app.config['allow_login']:
-            return redirect(current_app.config['redirect_url'], 302)
-        token = validateToken(request)
-        if isinstance(token, Response):
-            return token
-        return func(token, *args, **kwargs) if token and token['role'] > 1 else redirect("/", 302)
-    return _decorator
+    """Upload user or higher required"""
+    return _auth_required(2)(func)
 
 
 def operator_required(func):
-    # Operator login required
-    @wraps(func)
-    def _decorator(*args, **kwargs):
-        # Restrict login access by source IP
-        if current_app.config['allow_login'] and request.remote_addr not in current_app.config['allow_login']:
-            return redirect(current_app.config['redirect_url'], 302)
-        token = validateToken(request)
-        if isinstance(token, Response):
-            return token
-        return func(token, *args, **kwargs) if token and token['role'] > 2 else redirect("/", 302)
-    return _decorator
+    """Operator access required"""
+    return _auth_required(3)(func)
 
 
 def admin_required(func):
-    # Administrator login required
-    @wraps(func)
-    def _decorator(*args, **kwargs):
-        # Restrict login access by source IP
-        if current_app.config['allow_login'] and request.remote_addr not in current_app.config['allow_login']:
-            return redirect(current_app.config['redirect_url'], 302)
-        token = validateToken(request)
-        if isinstance(token, Response):
-            return token
-        return func(token, *args, **kwargs) if token and token['role'] > 3 else redirect("/", 302)
-    return _decorator
-
-
-def api_download_only_required(func):
-    # Authenticate via auth cookie or Dispatch API Header as upload user or higher
-    @wraps(func)
-    def _decorator(*args, **kwargs):
-        # Restrict access by source IP
-        if current_app.config['allow_login'] and request.remote_addr not in current_app.config['allow_login']:
-            return redirect(current_app.config['redirect_url'], 302)
-
-        token = validateToken(request)
-        if isinstance(token, Response):
-            return token
-        elif token and token['role'] > 0:
-            return func(token, *args, **kwargs)
-
-        api_key = validateKey(request)
-        return func(api_key, *args, **kwargs) if api_key and api_key['role'] > 0 else redirect("/", 302)
-    return _decorator
-
-
-def api_upload_only_required(func):
-    # Authenticate via auth cookie or Dispatch API Header as upload user or higher
-    @wraps(func)
-    def _decorator(*args, **kwargs):
-        # Restrict access by source IP
-        if current_app.config['allow_login'] and request.remote_addr not in current_app.config['allow_login']:
-            return redirect(current_app.config['redirect_url'], 302)
-
-        token = validateToken(request)
-        if isinstance(token, Response):
-            return token
-        elif token and token['role'] > 1:
-            return func(token, *args, **kwargs)
-
-        api_key = validateKey(request)
-        return func(api_key, *args, **kwargs) if api_key and api_key['role'] > 1 else redirect("/", 302)
-    return _decorator
-
-
-def api_operator_required(func):
-    # Authenticate via auth cookie or Dispatch API Header as admin
-    @wraps(func)
-    def _decorator(*args, **kwargs):
-        # Restrict access by source IP
-        if current_app.config['allow_login'] and request.remote_addr not in current_app.config['allow_login']:
-            return redirect(current_app.config['redirect_url'], 302)
-
-        token = validateToken(request)
-        if isinstance(token, Response):
-            return token
-        elif token and token['role'] > 2:
-            return func(token, *args, **kwargs)
-
-        api_key = validateKey(request)
-        return func(api_key, *args, **kwargs) if api_key and api_key['role'] > 2 else redirect("/", 302)
-    return _decorator
+    """Administrator access required"""
+    return _auth_required(4)(func)
 
 
 #
@@ -152,23 +96,24 @@ def validateToken(request):
         try:
             return jwt.decode(token, config.SECRET_KEY, algorithms=['HS256'])
         except jwt.ExpiredSignatureError:
-            return refreshToken(token)
+            return refreshToken(token, request)
         except Exception as e:
             logging.debug(f'Token Error:: {e}')
     return False
 
 
-def refreshToken(token, minute=20):
+def refreshToken(token, request, minute=20):
     # Refresh token if expired within N min
     data = jwt.decode(token, config.SECRET_KEY, algorithms=['HS256'], options={"verify_exp": False})
     now = datetime.now(timezone.utc)
     exp_time = datetime.fromtimestamp(data['exp'], tz=timezone.utc)
 
+    # Only renew if within the minute window
     if now < (exp_time + timedelta(minutes=minute)):
         logging.debug(f"Renewing token for {data['user']} user (exp: {exp_time})")
         new_token = createToken(data)
         resp = redirect(request.full_path, code=302)
-        resp.set_cookie(config.COOKIE_NAME, value=new_token, path="/", httponly=True, secure=True)
+        resp.set_cookie(config.COOKIE_NAME, value=new_token, path="/", httponly=True, secure=True if request.is_secure else False)
         return resp
     return False
 

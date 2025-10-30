@@ -45,6 +45,11 @@ h6 {
   font-family: "Nunito", sans-serif;
 }
 
+tr,
+td {
+  vertical-align: middle;
+}
+
 /*--------------------------------------------------------------
 # Main
 --------------------------------------------------------------*/
@@ -249,7 +254,7 @@ h6 {
 }
 
 .card-title {
-  padding: 20px 0 15px 0;
+  padding: 20px 0 5px 0;
   font-size: 18px;
   font-weight: 500;
   /*color: #012970;*/

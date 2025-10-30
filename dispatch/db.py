@@ -84,6 +84,7 @@ class DispatchDB(SqliteDB):
         "filename" TEXT UNIQUE NOT NULL,
         "file_path" TEXT UNIQUE NOT NULL,
         "access" INTEGER DEFAULT 3,
+        "encrypt" TEXT DEFAULT NULL,
         "alias" TEXT UNIQUE NOT NULL,
         "upload_date" DATETIME DEFAULT (datetime('now','localtime')),  
         "uploaded_by" TEXT NOT NULL);''',
@@ -92,14 +93,15 @@ class DispatchDB(SqliteDB):
         "id" INTEGER PRIMARY KEY AUTOINCREMENT,
         "redirect_url" TEXT,
         "source_ip" TEXT,
+        "source_port" INTEGER DEFAULT 443,
         "server_header" TEXT,
         "param_rotation" BOOLEAN DEFAULT 0,
         "param_key" TEXT DEFAULT 's=1234',
         "max_file_size" INTEGER DEFAULT {});'''.format(config.MAX_FILE_SIZE),
 
         '''INSERT OR IGNORE INTO settings 
-        (redirect_url, source_ip, server_header) 
-        VALUES ("https://google.com", "127.0.0.1", "Apache");''',
+        (redirect_url, source_ip, source_port, server_header) 
+        VALUES ("https://google.com", "127.0.0.1", {}, "Apache");'''.format(config.PORT),
 
         '''CREATE TABLE IF NOT EXISTS ip_allow_login (
         "id" INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,10 +208,10 @@ class DispatchDB(SqliteDB):
             data.append(obj)
         return data
 
-    def get_user_by_id(self, id):
+    def get_user_by_id(self, file_id):
         data = {}
-        for x in self.exec('SELECT username, created, last_login, role, api_key FROM users WHERE id=?;', (id,)):
-            data['id'] = id
+        for x in self.exec('SELECT username, created, last_login, role, api_key FROM users WHERE id=?;', (file_id,)):
+            data['id'] = file_id
             data['username'] = x[0]
             data['created'] = x[1]
             data['last_login'] = x[2]
@@ -221,18 +223,18 @@ class DispatchDB(SqliteDB):
     #
     # File Table
     #
-    def upload_file(self, filename, full_path, alias, user, access):
+    def upload_file(self, filename, full_path, alias, user, access, encrypt):
         sql = '''INSERT OR IGNORE INTO files 
-                (filename, file_path, alias, uploaded_by, access) 
-                VALUES (?, ?, ?, ?, ?)'''
-        if self.exec(sql, (filename, full_path, alias, user, access)) is not False:
+                (filename, file_path, alias, uploaded_by, access, encrypt) 
+                VALUES (?, ?, ?, ?, ?, ?);'''
+        if self.exec(sql, (filename, full_path, alias, user, access, encrypt)) is not False:
             return True
         return False
 
     def list_files(self):
         data = []
         sql = '''SELECT id, filename, file_path, alias, upload_date, uploaded_by, access,
-                 (SELECT source_ip FROM settings) FROM files;'''
+                 (SELECT source_ip FROM settings), (SELECT source_port FROM settings), encrypt FROM files;'''
         for x in self.exec(sql):
             obj = {}
             obj['id'] = x[0]
@@ -244,12 +246,14 @@ class DispatchDB(SqliteDB):
             obj['access'] = x[6]
             obj['access_name'] = self.file_access[x[6]]
             obj['ip'] = x[7]
+            obj['port'] = x[8]
+            obj['encrypt'] = x[9]
             obj['file_size'] = config.get_file_size(obj['file_path'])
             data.append(obj)
         return data
 
-    def update_access_by_id(self, id, access):
-        if self.exec('UPDATE files SET access=? WHERE id=?;', (access, id)):
+    def update_access_by_id(self, file_id, access):
+        if self.exec('UPDATE files SET access=? WHERE id=?;', (access, file_id)):
             return True
         return False
 
@@ -261,10 +265,11 @@ class DispatchDB(SqliteDB):
 
     def get_file_by_alias(self, alias):
         data = {}
-        for x in self.exec('SELECT id, file_path, access FROM files WHERE alias=? LIMIT 1;', (alias,)):
+        for x in self.exec('SELECT id, file_path, access, encrypt FROM files WHERE alias=? LIMIT 1;', (alias,)):
             data['id'] = x[0]
             data['file_path'] = x[1]
             data['access'] = x[2]
+            data['encrypt'] = x[3]
             data['access_name'] = self.file_access[x[2]]
         return data
 
@@ -275,60 +280,71 @@ class DispatchDB(SqliteDB):
             data['id'] = x[0]
         return data
 
-    def get_file_by_id(self, id):
+    def get_file_by_id(self, file_id):
         # used to pull file info for editing
         data = {}
         sql = '''SELECT filename, file_path, alias, upload_date, 
-            uploaded_by, access 
+            uploaded_by, access, encrypt
         FROM files 
         WHERE id=? LIMIT 1;'''
-        for x in self.exec(sql, (id,)):
-            data['id'] = id
+        for x in self.exec(sql, (file_id,)):
+            data['id'] = file_id
             data['filename'] = x[0]
             data['file_path'] = x[1]
             data['alias'] = x[2]
             data['upload_date'] = x[3]
             data['uploaded_by'] = x[4]
             data['access'] = x[5]
+            data['encrypt'] = x[6]
             data['access_name'] = self.file_access[x[5]]
         return data
 
-    def update_file_by_id(self, id, filename, full_path, alias, user, access):
+    def update_file_by_id(self, file_id, filename, full_path, alias, user, access, encrypt):
         sql = '''UPDATE files 
-        SET filename=?, file_path=?, alias=?, 
+        SET filename=?, file_path=?, alias=?, encrypt=?,
         upload_date=datetime('now','localtime'), uploaded_by=?,
         access=? WHERE id=?;'''
-        self.exec(sql, (filename, full_path, alias, user, access, id))
+        self.exec(sql, (filename, full_path, alias, encrypt, user, access, file_id))
 
-    def del_file_by_id(self, id):
-        return self.exec('DELETE FROM files WHERE id=?;', (id,))
+    def del_file_by_id(self, file_id):
+        return self.exec('DELETE FROM files WHERE id=?;', (file_id,))
 
     #
     # Settings
     #
     def get_settings(self):
         data = {}
-        sql = '''SELECT redirect_url, source_ip, param_rotation, 
+        sql = '''SELECT redirect_url, source_ip, source_port, param_rotation, 
         param_key, max_file_size, server_header FROM settings WHERE id=1;'''
 
         for x in self.exec(sql):
             data['redirect_url'] = x[0]
             data['source_ip'] = x[1]
-            data['param_rotation'] = x[2]
-            data['param_key'] = x[3]
-            data['max_file_size'] = x[4]
-            data['server_header'] = x[5]
+            data['source_port'] = x[2]
+            data['param_rotation'] = x[3]
+            data['param_key'] = x[4]
+            data['max_file_size'] = x[5]
+            data['server_header'] = x[6]
         return data
 
-    def update_settings(self, r_url, source_ip, max_size, server_header):
+    def update_settings(self, r_url, source_ip, source_port, max_size, server_header):
         sql = '''UPDATE settings SET 
         redirect_url=?,
         source_ip=?,
+        source_port=?,
         max_file_size=?,
         server_header=?
         WHERE id=1;
         '''
-        self.exec(sql, (r_url, source_ip, max_size, server_header))
+        self.exec(sql, (r_url, source_ip, source_port, max_size, server_header))
+
+    def update_external_host(self, ip):
+        # Update external IP/hostname for server
+        self.exec('UPDATE settings SET source_ip=? WHERE id=1;', (ip,)) 
+
+    def update_external_port(self, port):   
+        # Update external Port for server
+        self.exec('UPDATE settings SET source_port=? WHERE id=1;', (port,))
 
     #
     # Access Controls

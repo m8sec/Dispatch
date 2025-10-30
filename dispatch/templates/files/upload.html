@@ -23,16 +23,21 @@ Upload
 {% block html_content %}
 <div class="card">
   <div class="card-body" width="100%">
-    <h5 class="card-title">Upload File</h5>
+    <h5 class="card-title">Upload File(s)</h5>
     <form action="/file/upload" method="post" name="upload_file" enctype="multipart/form-data">
       <div class="row gy-4">
         <div class="col-md-10">
-          <input type="file" class="form-control" name="file" required>
+          <input type="file" class="form-control" name="file" required multiple>
         </div>
 
         <div class="col-md-10">
           <label>Custom Alias</label>
           <input type="text" class="form-control" name="alias" placeholder="(Optional)">
+        </div>
+
+        <div class="col-md-12">
+          <label for="alias">Encrypt File:</label>
+          <input type="text" class="form-control" name="encrypt" value="" placeholder="Pass Key (optional)">
         </div>
 
         <div class="col-md-10">

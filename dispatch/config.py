@@ -4,6 +4,7 @@
 import os
 import re
 import sys
+import base64
 import logging
 from os import path
 from requests import get
@@ -12,6 +13,9 @@ from datetime import datetime
 from random import choice, randint, shuffle
 from string import ascii_letters, digits, punctuation, ascii_uppercase, ascii_lowercase
 logger = logging.getLogger('dispatch-logger')
+
+
+
 
 
 def generate_ssl_cert(cert_path, key_path, country="US", cn="Dispatch", org="Dispatch", ou="", valid=365):
@@ -199,6 +203,7 @@ def refresh_app_configs(db, app):
     app.config['allow_login'] = login
     app.config['source_ip'] = s['source_ip']
     app.config['param_key'] = s['param_key']
+    app.config['source_port'] = s['source_port']
     app.config['redirect_url'] = s['redirect_url']
     app.config['server_header'] = s['server_header']
     app.config['MAX_CONTENT_LENGTH'] = s['max_file_size']
@@ -233,10 +238,26 @@ def log(data, user=False, remote_ip=None):
     logger.info(f"{data} - USER: {user['user']} ({user['id']}) - PRIV: {user['role_name']} - SRC: {remote_ip}")
 
 
+def dispatch_native_encrypt(data, password):
+    data_bytes = data   # already in bytes format
+    key_bytes = password.encode("utf-8")
+    l = len(key_bytes)
+    encrypted = bytes((data_bytes[i] ^ key_bytes[i % l]) for i in range(len(data_bytes)))
+    return base64.b64encode(encrypted)  # Sent by server in byte format
+
+
+def dispatch_native_decrypt(b64_data, password) -> str:
+    data_bytes = base64.b64decode(b64_data)
+    key_bytes = password.encode("utf-8")
+    l = len(key_bytes)
+    decrypted = bytes((data_bytes[i] ^ key_bytes[i % l]) for i in range(len(data_bytes)))
+    return decrypted.decode("utf-8")
+
+
 # ----------- * --------- # ----------- * --------- # ----------- * --------- #
 # DISPATCH CONFIGURATION SETUP
 # ----------- * --------- # ----------- * --------- # ----------- * --------- #
-VERSION = 'v0.1.0'
+VERSION = 'v0.1.2'
 
 #
 # Authentication
@@ -246,9 +267,9 @@ PORT = 443                              # Bind Port (default 443)
 DEFAULT_USER = 'admin'                  # Default admin user
 DEFAULT_PWD = generate_password(12)     # Default password for admin user
 COOKIE_NAME = 'token'                   # Cookie name for auth token
-TOKEN_TIMEOUT = 60  # (minutes)         # JWT token timeout
+TOKEN_TIMEOUT = 35  # (minutes)         # JWT token timeout
 API_HEADER = 'X-Dispatch-Auth'          # Header name for API key authentication
-MAX_FILE_SIZE = 16 * 1000 * 1000        # Maximum file size in bytes (16MB)
+MAX_FILE_SIZE = 16 * 1000 * 1000        # Maximum file upload size in bytes (16MB)
 
 # Rotating secret key to invalidate sessions on restart
 SECRET_KEY = f'{gen_random_string(randint(4, 8))}-{gen_random_string(randint(8, 10))}-{gen_random_string(randint(4, 8))}'

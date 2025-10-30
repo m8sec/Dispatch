@@ -3,6 +3,7 @@ import os
 import logging
 import requests
 from json import dumps
+from io import BytesIO
 from urllib.parse import urlparse
 from markupsafe import escape, Markup
 from werkzeug.utils import secure_filename
@@ -62,7 +63,7 @@ class DispatchServer(object):
                 if user_data['role'] > 0:
                     jwt_token = auth.createToken(user_data)
                     resp = redirect('/', code=302)
-                    resp.set_cookie(config.COOKIE_NAME, value=jwt_token, path="/", httponly=True, secure=True)
+                    resp.set_cookie(config.COOKIE_NAME, value=jwt_token, path="/", httponly=True, secure=True if request.is_secure else False)
                     return resp
                 else:
                     status = '<div style="color:red;">User disabled</div>'
@@ -85,9 +86,10 @@ class DispatchServer(object):
             if request.form['name'] == 'ui_settings':
                 a = request.form['redirect_url']
                 b = request.form['source_ip']
-                c = request.form['max_size']
-                d = request.form['server_header']
-                db.update_settings(a, b, c, d)
+                c = request.form['source_port']
+                d= request.form['max_size']
+                e = request.form['server_header']
+                db.update_settings(a, b, c, d,e )
                 config.log(f"Settings changed", token, request.remote_addr)
 
             elif request.form['name'] == 'login_restrictions':
@@ -161,34 +163,46 @@ class DispatchServer(object):
     @auth.upload_only_required
     def upload_file(token, status_msg=''):
         if request.method == 'POST':
-            f = request.files['file']
-            if f.filename == '':
+            files = request.files.getlist("file")
+            if len(files) == 0 or files[0].filename == '':
                 status_msg = Markup('<script>showNotification("No File Selected.", false);</script>')
                 return render_template('files/upload.html', token=token, status_msg=status_msg, config=current_app.config)
+            
+            for f in files:
+                db = DispatchDB(current_app.config['db_name'])
+                try:
+                    fname = config.file_collision_check(secure_filename(f.filename))
+                    full_path = os.path.join(config.FILE_PATH, fname)
+                    f.save(full_path)
 
-            fname = config.file_collision_check(secure_filename(f.filename))
-            full_path = os.path.join(config.FILE_PATH, fname)
-            try:
-                f.save(full_path)
-            except RequestEntityTooLarge:
-                status_msg = Markup('<script>showNotification("File Exceed Max Size.", false);</script>')
-                return render_template('files/upload.html', token=token, status_msg=status_msg, config=current_app.config)
+                    # File access permissions
+                    access_id = request.form.get('access', type=int)
+                    access = access_id if access_id is not None and access_id in [1, 2, 3] else 3
 
-            # File access permissions
-            access_id = request.form.get('access', type=int)
-            access = access_id if access_id is not None and access_id in [1, 2, 3] else 3
+                    # Generate alias
+                    alias = request.form.get('alias', '') if request.form.get('alias', False) else config.gen_alias(config.get_file_extension(fname))
+                    alias = config.alias_collision_check(db, alias)
 
-            # Generate alias
-            db = DispatchDB(current_app.config['db_name'])
-            alias = request.form['alias'] if request.form['alias'] != '' else config.gen_alias(config.get_file_extension(fname))
-            alias = config.alias_collision_check(db, alias)
+                    # File encryption
+                    encrypt = request.form.get('encrypt', '')
 
-            if db.upload_file(fname, full_path, alias, token['user'], access) is not False:
-                status_msg = Markup('<script>showNotification("File uploaded successfully!");</script>')
-                return redirect(url_for('index'))
-            else:
-                status_msg = Markup('<script>showNotification("File upload failed.", false);</script>')
+                    if not db.upload_file(fname, full_path, alias, token['user'], access, encrypt):
+                        raise Exception("Database Error")
+
+                except RequestEntityTooLarge:
+                    status_msg = Markup('<script>showNotification("File Exceed Max Size.", false);</script>')
+                    return render_template('files/upload.html', token=token, status_msg=status_msg, config=current_app.config)
+
+                except Exception as e:
+                    status_msg = Markup(f'<script>showNotification("File upload failed: {e}", false);</script>')
+                    return render_template('files/upload.html', token=token, status_msg=status_msg, config=current_app.config)
+                finally:
+                    db.close()
+            
+            status_msg = Markup('<script>showNotification("File(s) uploaded successfully!");</script>')
+            return redirect(url_for('index'))  
         return render_template('files/upload.html', token=token, status_msg=status_msg, config=current_app.config)
+        
 
     @app.route('/file/create', methods=['GET', 'POST'])
     @auth.upload_only_required
@@ -211,10 +225,13 @@ class DispatchServer(object):
 
             # Generate alias
             db = DispatchDB(current_app.config['db_name'])
-            alias = request.form['alias'] if request.form['alias'] != '' else config.gen_alias(config.get_file_extension(fname))
+            alias = request.form.get('alias', '') if request.form.get('alias', False) else config.gen_alias(config.get_file_extension(fname))
             alias = config.alias_collision_check(db, alias)
 
-            if db.upload_file(fname, full_path, alias, token['user'], access) is not False:
+            # File encryption
+            encrypt = request.form.get('encrypt', '')
+
+            if db.upload_file(fname, full_path, alias, token['user'], access, encrypt) is not False:
                 #status_msg = Markup('<script>showNotification("File uploaded successfully!", true);</script>')
                 return redirect(url_for('index'))
             else:
@@ -244,10 +261,13 @@ class DispatchServer(object):
 
             # Generate alias
             db = DispatchDB(current_app.config['db_name'])
-            alias = request.form['alias'] if request.form['alias'] != '' else config.gen_alias(config.get_file_extension(fname))
+            alias = request.form.get('alias', '') if request.form.get('alias', False) else config.gen_alias(config.get_file_extension(fname))
             alias = config.alias_collision_check(db, alias)
 
-            if db.upload_file(fname, full_path, alias, token['user'], access) is not False:
+            # File encryption
+            encrypt = request.form.get('encrypt', '')
+
+            if db.upload_file(fname, full_path, alias, token['user'], access, encrypt) is not False:
                 #status_msg = Markup('<script>showNotification("File uploaded successfully!", true);</script>')
                 return redirect(url_for('index'))
             else:
@@ -279,7 +299,7 @@ class DispatchServer(object):
                 fname = request.form['old_filename']
             else:
                 fname = request.form['filename'] if request.form['filename'] != '' else config.gen_filename()
-                fname = config.file_collision_check(secure_filename(fname))
+                #fname = config.file_collision_check(secure_filename(fname))
             full_path = os.path.join(config.FILE_PATH, fname)
 
             if 'file_content' in request.form.keys():
@@ -300,16 +320,17 @@ class DispatchServer(object):
                 alias = request.form['old_alias']
             else:
                 alias = request.form['alias'] if request.form['alias'] != '' else config.gen_alias(config.get_file_extension(fname))
-
-            # Ensure no alias collisions
-            alias = config.alias_collision_check(db, alias)
+            #alias = config.alias_collision_check(db, alias)
 
             # File access permissions
-            access_id = request.form.get('access', type=int)
-            access = access_id if access_id is not None and access_id in [1, 2, 3] else 3
+            access_id = request.form.get('access', 3, type=int)
+            access = access_id if access_id in [1, 2, 3] else 3
+
+            # File encryption
+            encrypt = request.form.get('encrypt', '')
 
             # Update references in db
-            db.update_file_by_id(request.form['id'], fname, full_path, alias, token['user'], access)
+            db.update_file_by_id(request.form['id'], fname, full_path, alias, token['user'], access, encrypt)
             db.close()
             return redirect(url_for('index'))
 
@@ -427,7 +448,7 @@ class DispatchServer(object):
         return Response(response=dumps(data), status=200, mimetype='application/json')
 
     @app.route('/api/users/gen-key', methods=['POST'])
-    @auth.api_download_only_required
+    @auth.login_required
     def user_refresh_api_key(token):
         """
         Access: Private
@@ -450,7 +471,7 @@ class DispatchServer(object):
         return abort(403)
 
     @app.route('/api/user/get-key', methods=['POST'])
-    @auth.api_download_only_required
+    @auth.login_required
     def api_get_user_api_key(token):
         """
         Access: Private
@@ -465,7 +486,7 @@ class DispatchServer(object):
         return abort(403)
 
     @app.route('/api/users/update-role', methods=['POST'])
-    @auth.api_operator_required
+    @auth.operator_required
     def api_update_user_role(token):
         """
         Access: Private
@@ -493,15 +514,29 @@ class DispatchServer(object):
         return abort(403)
 
     @app.route('/api/files/list', methods=['GET'])
-    @auth.api_operator_required
+    @auth.operator_required
     def api_list_files(token):
         db = DispatchDB(current_app.config['db_name'])
         data = db.list_files()
         db.close()
         return Response(response=dumps(data), status=200, mimetype='application/json')
+    
+    @app.route('/api/files/minimal-list', methods=['GET'])
+    @auth.login_required
+    def api_minimal_list_files(token):
+        # Minimal file listing for low priv users via api
+        db = DispatchDB(current_app.config['db_name'])
+        data = db.list_files()
+        db.close()
+        minimal = [{
+                "filename": item["filename"],
+                "alias": item["alias"],
+                "size": item["file_size"],
+        }for item in data]
+        return Response(response=dumps(minimal), status=200, mimetype='application/json')
 
     @app.route('/api/files/update-access', methods=['POST'])
-    @auth.api_operator_required
+    @auth.operator_required
     def api_update_file_access(token):
         try:
             j = request.get_json(force=True)
@@ -515,7 +550,7 @@ class DispatchServer(object):
         return abort(403)
 
     @app.route('/api/file/upload', methods=['POST'])
-    @auth.api_upload_only_required
+    @auth.upload_only_required
     def api_upload_file(token):
         f = request.files['file']
         if f.filename != '':
@@ -544,7 +579,7 @@ class DispatchServer(object):
         return abort(403)
 
     @app.route('/api/files/param-key', methods=['GET'])
-    @auth.api_download_only_required
+    @auth.login_required
     def api_get_param_key(token):
         k = current_app.config.get('param_key', '')
         return Response(response=dumps({'key': f'?{k}'}), status=200, mimetype='application/json')
@@ -601,7 +636,7 @@ class DispatchServer(object):
                 update_param_key(db)
                 db.close()
                 config.log(f'Accessed File: {path}', False, request.remote_addr)
-                return serve_file(data['file_path'], path)
+                return serve_file(data['file_path'], path, encrypt=data['encrypt'])
 
             # Check authentication (API Key or JWT Token)
             token = (
@@ -615,7 +650,7 @@ class DispatchServer(object):
                 update_param_key(db)
                 db.close()
                 config.log(f'Accessed File: {path}', token, request.remote_addr)
-                return serve_file(data['file_path'], path)
+                return serve_file(data['file_path'], path, encrypt=data['encrypt'])
 
             # Catch all bad traffic
             return redirect(current_app.config['redirect_url'], 302)
@@ -769,14 +804,33 @@ def update_param_key(db):
 #
 # Dynamic page features
 #
-def serve_file(file_path, url_name):
-    # https://werkzeug.palletsprojects.com/en/2.3.x/serving/
-    if os.path.exists(file_path):
-        if request.args.get('raw', type=bool):
-            return send_file(file_path, download_name=url_name, as_attachment=False, mimetype='text/plain')
-        return send_file(file_path, download_name=url_name, as_attachment=True)
-    return redirect(current_app.config['redirect_url'], 302)
-
+def serve_file(file_path, url_name, encrypt=False):
+    if not os.path.isfile(file_path):
+        return redirect(current_app.config['redirect_url'], 302)
+    
+    if encrypt:
+        with open(file_path, "rb") as f:
+            encrypted_b64 = config.dispatch_native_encrypt(f.read(), encrypt)
+            buf = BytesIO(encrypted_b64)
+            buf.seek(0)
+            return send_file(
+                buf,
+                download_name=url_name,
+                as_attachment=False if request.args.get('raw', type=bool) else True,
+                mimetype='text/plain' if request.args.get('raw', type=bool) else None,
+                conditional=False,
+                max_age=0,
+            )
+    
+    return send_file(
+        file_path,
+        download_name=url_name,
+        as_attachment=False if request.args.get('raw', type=bool) else True,
+        mimetype='text/plain' if request.args.get('raw', type=bool) else None,
+        conditional=True,
+        max_age=0,
+    )
+    
 
 def reverse_proxy(redirect_url):
     """Forward headers and data, correctly handling HTTPS requests and common issues."""
