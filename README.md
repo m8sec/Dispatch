@@ -12,7 +12,7 @@ With **built-in evasion techniques**, **custom alias addresses**, and a **revers
 - **Instant Download Cradles** – Generate ready-to-use commands in the admin portal.  
 - **Simple File Uploads** – Use the web interface to upload files or automate using the Dispatch API
 
-<img height="400" alt="dispatch" src="https://github.com/user-attachments/assets/c6ec329b-933d-4560-a3e8-2eeb74095b22" />
+<img height="400" alt="dispatch" src="https://github.com/user-attachments/assets/6fa6336c-629d-40da-8088-1128c193deb0" />
 
 ## ⚡ Install  
 Dispatch is designed for **Windows, Linux, and macOS** with minimal dependencies. Simply, execute the following commands to get started:  
@@ -38,6 +38,22 @@ Alternatively, install with Poetry and execute using the `dispatch` run command:
 ```bash
 python3 -m poetry run dispatch
 ```
+
+## 🦄 Advanced usage
+Set network interfaces using command-line arguments to easily configure automation and deploy Dispatch in the cloud.
+
+*Note: this will override `config.py` and reset values in the database at runtime*
+```
+> python3 dispatch-server.py -h
+  --http                           Server over HTTP (default: False)
+  --bind-host BIND_HOST            Override bind host config
+  --bind-port BIND_PORT            Override bind port config
+  --external-host EXTERNAL_HOST    Set external IP/Hostname of server
+  --external-port EXTERNAL_PORT    Set different external port from bind
+
+> python3 dispatch-server.py --external-host $(curl ident.me) --bind-host 0.0.0.0 --bind-port 443
+```
+
 
 
 ## ⚠️ Disclaimer
