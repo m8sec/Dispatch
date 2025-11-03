@@ -37,7 +37,7 @@ class DispatchServer(object):
         for f in upload_dir:
             if f != '.gitignore' and f not in file_names:
                 alias = config.gen_alias(config.get_file_extension(f))
-                db.upload_file(f, os.path.join(config.FILE_PATH, f), alias, token['user'], 3)
+                db.upload_file(f, os.path.join(config.FILE_PATH, f), alias, token['user'], 3, '')
 
         # Remove manually deleted files via console from DB
         for f in file_list:
