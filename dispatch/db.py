@@ -223,7 +223,7 @@ class DispatchDB(SqliteDB):
     #
     # File Table
     #
-    def upload_file(self, filename, full_path, alias, user, access, encrypt):
+    def upload_file(self, filename, full_path, alias, user, access, encrypt=''):
         sql = '''INSERT OR IGNORE INTO files 
                 (filename, file_path, alias, uploaded_by, access, encrypt) 
                 VALUES (?, ?, ?, ?, ?, ?);'''
