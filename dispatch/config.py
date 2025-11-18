@@ -205,6 +205,11 @@ def refresh_app_configs(db, app):
     app.config['server_header'] = s['server_header']
     app.config['MAX_CONTENT_LENGTH'] = s['max_file_size']
     app.config['param_rotation'] = int(s['param_rotation'])
+    app.config['cert_domain'] = s.get('cert_domain', '')
+    app.config['cert_email'] = s.get('cert_email', '')
+    app.config['cert_staging'] = bool(s.get('cert_staging', 0))
+    app.config['cert_status'] = s.get('cert_status', 'Not Configured')
+    app.config['cert_last_error'] = s.get('cert_last_error', '')
 
 
 def setup_debug_logger():
@@ -274,17 +279,48 @@ SECRET_KEY = f'{gen_random_string(randint(4, 8))}-{gen_random_string(randint(8, 
 #
 # File Storage
 #
-DB_NAME = path.join(path.dirname(path.realpath(__file__)), 'data', 'dispatch.db')
-CERT_PATH = path.join(path.dirname(path.realpath(__file__)), 'data', 'certs', 'cert.crt')
-KEY_PATH = path.join(path.dirname(path.realpath(__file__)), 'data', 'certs', 'key.pem')
-FILE_PATH = path.join(path.dirname(path.realpath(__file__)), 'data', 'uploads')
+BASE_PATH = path.dirname(path.realpath(__file__))
+DATA_PATH = path.join(BASE_PATH, 'data')
+DB_NAME = path.join(DATA_PATH, 'dispatch.db')
+CERT_DIR = path.join(DATA_PATH, 'certs')
+CERT_PATH = path.join(CERT_DIR, 'cert.crt')
+KEY_PATH = path.join(CERT_DIR, 'key.pem')
+FILE_PATH = path.join(DATA_PATH, 'uploads')
+CHALLENGE_PATH = path.join(DATA_PATH, 'challenges')
+CERTBOT_DATA_PATH = path.join(DATA_PATH, 'certbot')
+CERTBOT_CONFIG_PATH = path.join(CERTBOT_DATA_PATH, 'config')
+CERTBOT_WORK_PATH = path.join(CERTBOT_DATA_PATH, 'work')
+CERTBOT_LOG_PATH = path.join(CERTBOT_DATA_PATH, 'logs')
 
 #
 # Password protect site resources
 #
-TMPL_PATH = path.join(path.dirname(path.realpath(__file__)), 'templates')
+TMPL_PATH = path.join(BASE_PATH, 'templates')
 
 #
 # Log Path
 #
-DISPATCH_LOG = path.join(path.dirname(path.realpath(__file__)), 'data', 'logs', 'dispatch.log')
+DISPATCH_LOG = path.join(DATA_PATH, 'logs', 'dispatch.log')
+
+#
+# Certificate enrollment
+#
+CERTBOT_BIN = os.environ.get('CERTBOT_BIN', 'certbot')
+LE_PROD_ACME_URL = os.environ.get('DISPATCH_ACME_URL', 'https://acme-v02.api.letsencrypt.org/directory')
+LE_STAGING_ACME_URL = 'https://acme-staging-v02.api.letsencrypt.org/directory'
+
+# Ensure required directories exist
+CHALLENGE_WELL_KNOWN = path.join(CHALLENGE_PATH, '.well-known', 'acme-challenge')
+
+for required_path in [
+    DATA_PATH,
+    CERT_DIR,
+    FILE_PATH,
+    path.dirname(DISPATCH_LOG),
+    CHALLENGE_PATH,
+    CHALLENGE_WELL_KNOWN,
+    CERTBOT_CONFIG_PATH,
+    CERTBOT_WORK_PATH,
+    CERTBOT_LOG_PATH
+]:
+    os.makedirs(required_path, exist_ok=True)

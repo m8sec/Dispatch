@@ -12,6 +12,7 @@ from flask import Flask, request, redirect, render_template, Response, send_file
 
 from dispatch import auth
 from dispatch import config
+from dispatch import certs
 from dispatch.db import DispatchDB
 log = logging.getLogger('dispatch-logger')
 
@@ -24,6 +25,11 @@ class DispatchServer(object):
     app.config['allow__ua'] = []
     app.config['allow_login'] = []
     app.config['redirect_url'] = ''
+    app.config['cert_domain'] = ''
+    app.config['cert_email'] = ''
+    app.config['cert_staging'] = False
+    app.config['cert_status'] = 'Not Configured'
+    app.config['cert_last_error'] = ''
 
     @app.route('/', methods=['GET'])
     @auth.login_required
@@ -81,6 +87,8 @@ class DispatchServer(object):
     @app.route('/settings', methods=['GET', 'POST'])
     @auth.operator_required
     def settings(token):
+        cert_status_msg = ''
+        certbot_installed = certs.certbot_available()
         if request.method == 'POST':
             db = DispatchDB(current_app.config['db_name'])
             if request.form['name'] == 'ui_settings':
@@ -96,9 +104,50 @@ class DispatchServer(object):
                 db.update_allow_login(request.form['allow_login'])
                 config.log(f"Login restrictions updated", token, request.remote_addr)
 
+            elif request.form['name'] == 'certbot_settings':
+                cert_domain = request.form.get('cert_domain', '').strip()
+                cert_email = request.form.get('cert_email', '').strip()
+                cert_staging = 1 if request.form.get('cert_staging', False) else 0
+                action = request.form.get('action', 'save')
+                db.update_certbot_settings(cert_domain, cert_email, cert_staging)
+                cert_status_msg = Markup('<script>showNotification("Certificate settings saved.");</script>')
+
+                if action == 'install':
+                    if certs.certbot_available():
+                        cert_status_msg = Markup('<script>showNotification("Certbot is already installed.");</script>')
+                    else:
+                        try:
+                            certs.install_certbot()
+                            cert_status_msg = Markup('<script>showNotification("Certbot installation completed.", true);</script>')
+                            certbot_installed = True
+                        except Exception as e:
+                            err_msg = str(e)
+                            cert_status_msg = Markup(f'<script>showNotification("Certbot installation failed: {escape(err_msg)}", false);</script>')
+                            logging.error(f"Certbot installation failed: {err_msg}")
+
+                elif action == 'enroll':
+                    try:
+                        certs.request_certificate(cert_domain, cert_email, bool(cert_staging))
+                        cert_status_msg = Markup('<script>showNotification("Certificate enrollment completed. Restart Dispatch to load the new certificate.", true);</script>')
+                        db.update_certbot_status('Certificate issued', '')
+                        config.log(f"Certificate enrollment completed for {cert_domain}", token, request.remote_addr)
+                    except Exception as e:
+                        err_msg = str(e)
+                        cert_status_msg = Markup(f'<script>showNotification("Certificate enrollment failed: {escape(err_msg)}", false);</script>')
+                        db.update_certbot_status('Error', err_msg[:250])
+                        logging.error(f"Certificate enrollment failed: {err_msg}")
+
             config.refresh_app_configs(db, current_app)
             db.close()
-        return render_template('settings/settings.html', token=token, config=current_app.config)
+        else:
+            certbot_installed = certs.certbot_available()
+        return render_template(
+            'settings/settings.html',
+            token=token,
+            config=current_app.config,
+            cert_status_msg=cert_status_msg,
+            certbot_installed=certbot_installed
+        )
 
     @app.route('/settings/access', methods=['GET', 'POST'])
     @auth.operator_required
@@ -149,6 +198,16 @@ class DispatchServer(object):
     def dispatch_log(token):
         with open(config.DISPATCH_LOG, 'r') as f:
             return render_template('settings/log.html', token=token, content=escape(f.read()), config=current_app.config)
+
+    @app.route('/.well-known/acme-challenge/<token>', methods=['GET'])
+    def acme_challenge(token):
+        if '/' in token or '..' in token:
+            return abort(404)
+        challenge_dir = os.path.join(config.CHALLENGE_PATH, '.well-known', 'acme-challenge')
+        challenge_file = os.path.join(challenge_dir, token)
+        if os.path.exists(challenge_file):
+            return send_file(challenge_file)
+        return abort(404)
 
     #
     # File Interactions
@@ -864,5 +923,3 @@ def reverse_proxy(redirect_url):
             return Response(response.content, response.status_code, response_headers)
     except requests.exceptions.RequestException as e:
         return f"Proxy Error: {str(e)}", 502
-
-

@@ -108,6 +108,61 @@ Settings
     </form>
   </div>
 </div>
+
+
+<div class="card" style="width:80%;">
+  <div class="card-body">
+    <h5 class="card-title">TLS Certificate Enrollment</h5>
+    <p>
+      Automate certificate issuance with Certbot. Dispatch will call the Certbot CLI using the HTTP-01 challenge,
+      so ensure TCP/80 routes to this server and that <code>certbot</code> is installed.
+    </p>
+    {% if cert_status_msg %}
+      {{ cert_status_msg|safe }}
+    {% endif %}
+    <form action="/settings" method="post" class="row g-3">
+      <input type="hidden" name="name" value="certbot_settings">
+      <div class="col-md-12">
+        <label class="form-label"><b>Domain</b></label>
+        <input type="text" class="form-control" name="cert_domain" placeholder="example.domain.com" value="{{ config['cert_domain'] }}">
+      </div>
+      <div class="col-md-12">
+        <label class="form-label"><b>Contact Email</b></label>
+        <input type="email" class="form-control" name="cert_email" placeholder="admin@example.com" value="{{ config['cert_email'] }}">
+      </div>
+      <div class="col-md-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="cert_staging" id="certbotStaging" {% if config['cert_staging'] %}checked{% endif %}>
+          <label class="form-check-label" for="certbotStaging">
+            Use Let's Encrypt staging (recommended for testing to avoid rate limits)
+          </label>
+        </div>
+      </div>
+      <div class="col-md-12">
+        <div><b>Certbot Installed:</b> {{ 'Yes' if certbot_installed else 'No' }}</div>
+        <div><b>Current Certificate Status:</b> {{ config['cert_status'] }}</div>
+        {% if config['cert_last_error'] %}
+          <div style="color:#d9534f;">Last error: {{ config['cert_last_error'] }}</div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-primary w-100" style="background-color:#42B41C;border-color:#42B41C;" type="submit" name="action" value="save">
+          <i class="bi bi-save"></i>&nbsp;Save
+        </button>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-outline-primary w-100" type="submit" name="action" value="enroll">
+          <i class="bi bi-lock"></i>&nbsp;Request Certificate
+        </button>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-outline-secondary w-100" type="submit" name="action" value="install">
+          <i class="bi bi-cloud-download"></i>&nbsp;Install Certbot
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block html_footer %}

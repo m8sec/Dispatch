@@ -56,5 +56,28 @@ Set network interfaces using command-line arguments to easily configure automati
 
 
 
+## 🔐 Automatic TLS Certificates
+Dispatch can enroll Let’s Encrypt certificates directly from the Settings UI.
+
+1. **Verify inbound access to ports 80/443.** HTTP-01 challenges require plaintext HTTP. From another host connect to a temporary `nc -lvnp 80` / `nc -lvnp 443` listener on the Dispatch server to confirm routing through firewalls and load balancers.
+2. **Run Dispatch in HTTP mode while requesting a cert:**
+   ```bash
+   sudo python3 dispatch-server.py --http --bind-host 0.0.0.0 --bind-port 80 \
+        --external-host <domain> --external-port 443
+   ```
+   Use a fresh browser session because cookies issued over HTTPS are marked `secure` and won’t be sent to HTTP.
+3. **Open Settings → TLS Certificate Enrollment.**
+   - Click **Install Certbot** if it is missing.
+   - Provide the domain and contact email.
+   - Leave **Use Let’s Encrypt staging** enabled for test runs; uncheck it for production.
+   - Press **Request Certificate** and monitor the toast/log output (`dispatch/data/logs/dispatch.log`).
+4. **Switch to production:** When staging is unchecked Dispatch automatically removes the staging lineage so Certbot reissues via the production ACME server.
+5. **Restart Dispatch on HTTPS/443** after a successful enrollment:
+   ```bash
+   sudo python3 dispatch-server.py --bind-host 0.0.0.0 --bind-port 443 \
+        --external-host <domain> --external-port 443
+   ```
+   Confirm with `openssl s_client -connect <domain>:443 -servername <domain>` or a browser visit.
+
 ## ⚠️ Disclaimer
 Dispatch is intended for authorized security testing. Never test against systems you don’t own or have explicit permission.

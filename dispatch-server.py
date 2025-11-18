@@ -9,6 +9,7 @@ import sys
 import logging
 import argparse
 from dispatch import config
+from dispatch import certs
 from dispatch.db import DispatchDB
 from gevent.pywsgi import WSGIServer
 from dispatch.app import DispatchServer
@@ -31,6 +32,7 @@ class IgnoreSSLEOFError(logging.Filter):
         return "SSLEOFError" not in record.getMessage()
     
 logging.getLogger("gevent").addFilter(IgnoreSSLEOFError())
+log = logging.getLogger('dispatch-logger')
 
 def main():
     parser = argparse.ArgumentParser(description="Dispatch Server Options")
@@ -84,6 +86,11 @@ def main():
     else:
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain(config.CERT_PATH, config.KEY_PATH)
+        try:
+            meta = certs.read_cert_metadata(config.CERT_PATH)
+            log.info(f"Loaded TLS certificate subject={meta.get('subject')} issuer={meta.get('issuer')} notAfter={meta.get('notAfter')}")
+        except Exception as e:
+            log.warning(f"Unable to log certificate metadata: {e}")
 
     # Start server
     print(f'[+] Starting Dispatch locally on: {"http" if args.http else "https"}://{config.INTERFACE}:{config.PORT}/\n')

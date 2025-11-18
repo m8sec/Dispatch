@@ -17,6 +17,7 @@ class SqliteDB:
     def __init__(self, db_file, timeout=3):
         self.db_file = db_file
         self.conn = connect(self.db_file, timeout=timeout, check_same_thread=False)
+        self.apply_migrations()
 
     def close(self):
         try:
@@ -36,6 +37,39 @@ class SqliteDB:
             return False
         finally:
             cur.close()
+
+    def column_exists(self, table, column):
+        try:
+            result = self.exec(f"PRAGMA table_info({table});")
+            if result:
+                for row in result:
+                    if row[1] == column:
+                        return True
+        except Exception as e:
+            logging.debug(f"Column check error:: {e}")
+        return False
+
+    def ensure_column(self, table, column, definition):
+        if not self.column_exists(table, column):
+            try:
+                self.exec(f"ALTER TABLE {table} ADD COLUMN {column} {definition};")
+            except Exception as e:
+                logging.debug(f"Column migration error:: {e}")
+
+    def apply_migrations(self):
+        # Ensure new columns exist for legacy databases
+        try:
+            tables = self.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='settings';")
+            if not tables:
+                return
+            self.ensure_column('settings', 'cert_domain', "TEXT DEFAULT ''")
+            self.ensure_column('settings', 'cert_email', "TEXT DEFAULT ''")
+            self.ensure_column('settings', 'cert_staging', "BOOLEAN DEFAULT 1")
+            self.ensure_column('settings', 'cert_status', "TEXT DEFAULT 'Not Configured'")
+            self.ensure_column('settings', 'cert_last_error', "TEXT DEFAULT ''")
+            self.ensure_column('settings', 'cert_last_attempt', "DATETIME DEFAULT (datetime('now','localtime'))")
+        except Exception as e:
+            logging.debug(f"Migration error:: {e}")
 
     def executemany(self, query, args_list):
         try:
@@ -97,7 +131,13 @@ class DispatchDB(SqliteDB):
         "server_header" TEXT,
         "param_rotation" BOOLEAN DEFAULT 0,
         "param_key" TEXT DEFAULT 's=1234',
-        "max_file_size" INTEGER DEFAULT {});'''.format(config.MAX_FILE_SIZE),
+        "max_file_size" INTEGER DEFAULT {},
+        "cert_domain" TEXT DEFAULT '',
+        "cert_email" TEXT DEFAULT '',
+        "cert_staging" BOOLEAN DEFAULT 1,
+        "cert_status" TEXT DEFAULT 'Not Configured',
+        "cert_last_error" TEXT DEFAULT '',
+        "cert_last_attempt" DATETIME DEFAULT (datetime('now','localtime')));'''.format(config.MAX_FILE_SIZE),
 
         '''INSERT OR IGNORE INTO settings 
         (redirect_url, source_ip, source_port, server_header) 
@@ -315,7 +355,8 @@ class DispatchDB(SqliteDB):
     def get_settings(self):
         data = {}
         sql = '''SELECT redirect_url, source_ip, source_port, param_rotation, 
-        param_key, max_file_size, server_header FROM settings WHERE id=1;'''
+        param_key, max_file_size, server_header, cert_domain, cert_email,
+        cert_staging, cert_status, cert_last_error FROM settings WHERE id=1;'''
 
         for x in self.exec(sql):
             data['redirect_url'] = x[0]
@@ -325,6 +366,11 @@ class DispatchDB(SqliteDB):
             data['param_key'] = x[4]
             data['max_file_size'] = x[5]
             data['server_header'] = x[6]
+            data['cert_domain'] = x[7]
+            data['cert_email'] = x[8]
+            data['cert_staging'] = x[9]
+            data['cert_status'] = x[10]
+            data['cert_last_error'] = x[11]
         return data
 
     def update_settings(self, r_url, source_ip, source_port, max_size, server_header):
@@ -337,6 +383,22 @@ class DispatchDB(SqliteDB):
         WHERE id=1;
         '''
         self.exec(sql, (r_url, source_ip, source_port, max_size, server_header))
+
+    def update_certbot_settings(self, domain, email, staging):
+        sql = '''UPDATE settings SET 
+        cert_domain=?,
+        cert_email=?,
+        cert_staging=?
+        WHERE id=1;'''
+        self.exec(sql, (domain, email, staging))
+
+    def update_certbot_status(self, status, error=''):
+        sql = '''UPDATE settings SET 
+        cert_status=?,
+        cert_last_error=?,
+        cert_last_attempt=datetime('now','localtime')
+        WHERE id=1;'''
+        self.exec(sql, (status, error))
 
     def update_external_host(self, ip):
         # Update external IP/hostname for server
@@ -423,6 +485,3 @@ class DispatchDB(SqliteDB):
             for x in form_input.split('\n'):
                 if x.strip():
                     self.exec('INSERT OR IGNORE INTO ip_allow_login (ip) VALUES (?);',(x.strip(),))
-
-
-
