@@ -1,0 +1,326 @@
+{% extends "master.html" %}
+
+{% block title %}
+Alerts
+{% endblock %}
+
+{% block html_head %}
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Alert Configuration</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item active">Alerts</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card" style="width:80%;">
+    <div class="card-body">
+      <h5 class="card-title">Add Alert</h5>
+        <form id="alertForm" class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label"><b>Alert Type</b></label>
+                <select class="form-select" id="alertType" name="alert_type" onchange="updateAlertFields()">
+                    <option value="">Select alert type...</option>
+                    <option value="user_login">User Login</option>
+                    <option value="file_download">File Download</option>
+                    <option value="failed_logins">Failed Login Threshold</option>
+                    <option value="ip_monitor">IP/CIDR Monitor</option>
+                </select>
+            </div>
+
+            <div class="col-md-6" id="targetFieldContainer" style="display:none;">
+                <label class="form-label" id="targetLabel"><b>Target</b></label>
+                <select class="form-select" id="targetSelect" name="target_id" style="display:none;">
+                </select>
+                <input type="text" class="form-control" id="targetInput" name="target_value" style="display:none;" placeholder="">
+            </div>
+
+            <div class="col-md-12" id="descriptionContainer" style="display:none;">
+                <label class="form-label"><b>Description</b></label>
+                <input type="text" class="form-control" id="alertDescription" name="description" placeholder="Alert description (auto-generated if empty)">
+            </div>
+
+            <div class="col-md-3">
+              <button class="btn btn-success w-100" type="button" onclick="createAlert()">
+                <i class="bi bi-bell-fill"></i>&nbsp;
+                Add Alert
+              </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card" style="width:80%;">
+  <div class="card-body">
+    <h5 class="card-title">Configured Alerts</h5>
+    <table class="table table-striped" id="alertsTable">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Target</th>
+                <th>Description</th>
+                <th>Enabled</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="alertsTableBody">
+            <tr><td colspan="5" class="text-center">Loading...</td></tr>
+        </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+<script>
+let users = [];
+let files = [];
+
+const alertTypeLabels = {
+    'user_login': 'User Login',
+    'file_download': 'File Download',
+    'failed_logins': 'Failed Logins',
+    'ip_monitor': 'IP Monitor'
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadAlerts();
+    loadUsers();
+    loadFiles();
+});
+
+function loadUsers() {
+    fetch('/api/users/list')
+        .then(response => response.json())
+        .then(data => {
+            users = data;
+        })
+        .catch(error => console.error('Error loading users:', error));
+}
+
+function loadFiles() {
+    fetch('/api/files/list')
+        .then(response => response.json())
+        .then(data => {
+            files = data;
+        })
+        .catch(error => console.error('Error loading files:', error));
+}
+
+function loadAlerts() {
+    fetch('/api/alerts')
+        .then(response => response.json())
+        .then(data => {
+            renderAlerts(data);
+        })
+        .catch(error => {
+            console.error('Error loading alerts:', error);
+            document.getElementById('alertsTableBody').innerHTML =
+                '<tr><td colspan="5" class="text-center text-danger">Error loading alerts</td></tr>';
+        });
+}
+
+function renderAlerts(alerts) {
+    const tbody = document.getElementById('alertsTableBody');
+
+    if (!alerts || alerts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No alerts configured</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = alerts.map(alert => {
+        const typeLabel = alertTypeLabels[alert.alert_type] || alert.alert_type;
+        let targetDisplay = '-';
+
+        if (alert.alert_type === 'user_login' && alert.target_id) {
+            const user = users.find(u => u.id === alert.target_id);
+            targetDisplay = user ? user.username : `User ID: ${alert.target_id}`;
+        } else if (alert.alert_type === 'file_download' && alert.target_id) {
+            const file = files.find(f => f.id === alert.target_id);
+            targetDisplay = file ? file.filename : `File ID: ${alert.target_id}`;
+        } else if (alert.target_value) {
+            targetDisplay = alert.target_value;
+        }
+
+        const enabledChecked = alert.enabled ? 'checked' : '';
+
+        return `
+            <tr>
+                <td>${typeLabel}</td>
+                <td>${targetDisplay}</td>
+                <td>${alert.description || '-'}</td>
+                <td>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" ${enabledChecked}
+                               onchange="toggleAlert(${alert.id}, this.checked)">
+                    </div>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteAlert(${alert.id})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function updateAlertFields() {
+    const alertType = document.getElementById('alertType').value;
+    const targetContainer = document.getElementById('targetFieldContainer');
+    const targetSelect = document.getElementById('targetSelect');
+    const targetInput = document.getElementById('targetInput');
+    const targetLabel = document.getElementById('targetLabel');
+    const descContainer = document.getElementById('descriptionContainer');
+
+    // Reset
+    targetSelect.style.display = 'none';
+    targetInput.style.display = 'none';
+    targetSelect.innerHTML = '';
+    targetInput.value = '';
+
+    if (!alertType) {
+        targetContainer.style.display = 'none';
+        descContainer.style.display = 'none';
+        return;
+    }
+
+    targetContainer.style.display = 'block';
+    descContainer.style.display = 'block';
+
+    switch(alertType) {
+        case 'user_login':
+            targetLabel.innerHTML = '<b>User</b>';
+            targetSelect.style.display = 'block';
+            targetSelect.innerHTML = '<option value="">Select user...</option>' +
+                users.map(u => `<option value="${u.id}">${u.username}</option>`).join('');
+            break;
+
+        case 'file_download':
+            targetLabel.innerHTML = '<b>File</b>';
+            targetSelect.style.display = 'block';
+            targetSelect.innerHTML = '<option value="">Select file...</option>' +
+                files.map(f => `<option value="${f.id}">${f.filename}</option>`).join('');
+            break;
+
+        case 'failed_logins':
+            targetLabel.innerHTML = '<b>Threshold</b>';
+            targetInput.style.display = 'block';
+            targetInput.type = 'number';
+            targetInput.min = '1';
+            targetInput.placeholder = 'Number of failed attempts (e.g., 5)';
+            targetInput.value = '5';
+            break;
+
+        case 'ip_monitor':
+            targetLabel.innerHTML = '<b>IP/CIDR</b>';
+            targetInput.style.display = 'block';
+            targetInput.type = 'text';
+            targetInput.placeholder = 'IP address or CIDR (e.g., 10.0.0.0/24)';
+            break;
+    }
+}
+
+function createAlert() {
+    const alertType = document.getElementById('alertType').value;
+    const targetSelect = document.getElementById('targetSelect');
+    const targetInput = document.getElementById('targetInput');
+    const description = document.getElementById('alertDescription').value;
+
+    if (!alertType) {
+        showNotification('Please select an alert type', false);
+        return;
+    }
+
+    let data = {
+        alert_type: alertType,
+        description: description
+    };
+
+    if (alertType === 'user_login' || alertType === 'file_download') {
+        if (!targetSelect.value) {
+            showNotification('Please select a target', false);
+            return;
+        }
+        data.target_id = parseInt(targetSelect.value);
+    } else {
+        if (!targetInput.value) {
+            showNotification('Please enter a value', false);
+            return;
+        }
+        data.target_value = targetInput.value;
+    }
+
+    fetch('/api/alerts', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.id || result.success) {
+            showNotification('Alert created successfully', true);
+            document.getElementById('alertForm').reset();
+            document.getElementById('targetFieldContainer').style.display = 'none';
+            document.getElementById('descriptionContainer').style.display = 'none';
+            loadAlerts();
+        } else {
+            showNotification('Failed to create alert: ' + (result.error || 'Unknown error'), false);
+        }
+    })
+    .catch(error => {
+        showNotification('Error creating alert: ' + error, false);
+    });
+}
+
+function toggleAlert(alertId, enabled) {
+    fetch(`/api/alerts/${alertId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: enabled ? 1 : 0})
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showNotification(enabled ? 'Alert enabled' : 'Alert disabled', true);
+        } else {
+            showNotification('Failed to update alert', false);
+            loadAlerts();
+        }
+    })
+    .catch(error => {
+        showNotification('Error updating alert: ' + error, false);
+        loadAlerts();
+    });
+}
+
+function deleteAlert(alertId) {
+    if (!confirm('Are you sure you want to delete this alert?')) {
+        return;
+    }
+
+    fetch(`/api/alerts/${alertId}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showNotification('Alert deleted', true);
+            loadAlerts();
+        } else {
+            showNotification('Failed to delete alert', false);
+        }
+    })
+    .catch(error => {
+        showNotification('Error deleting alert: ' + error, false);
+    });
+}
+</script>
+{% endblock %}

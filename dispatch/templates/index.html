@@ -1,0 +1,272 @@
+{% extends "master.html" %}
+
+{% block title %}
+Files
+{% endblock %}
+
+{% block html_head %}
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.19/css/dataTables.bootstrap4.min.css" crossorigin="anonymous">
+    <style>
+        .folder-icon {
+            font-size: 18px;
+            margin-right: 8px;
+        }
+
+        .folder-tree-item {
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px 0;
+        }
+
+        .folder-tree-item:hover {
+            background: #f0f0f0;
+        }
+
+        .access_perms {
+            max-width: 130px;
+            font-size: 12px;
+        }
+
+        .actions {
+            white-space: nowrap;
+        }
+
+        .actions a, .actions button {
+            margin-right: 3px;
+        }
+
+        #file_listing td {
+            vertical-align: middle;
+        }
+
+        #file_listing {
+            width: 100% !important;
+        }
+
+        #file_listing_wrapper {
+            width: 100%;
+        }
+
+        #file_listing_wrapper .row {
+            width: 100%;
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+        #bulkActions {
+            display: none;
+        }
+
+        /* Ensure Dispatch green for buttons */
+        .btn-success {
+            background-color: #42B41C !important;
+            border-color: #42B41C !important;
+        }
+
+        .btn-success:hover {
+            background-color: #4bd11e !important;
+            border-color: #4bd11e !important;
+        }
+
+        /* Pagination */
+        .page-link, .active>.page-link, .page-link.active {
+            color: #fff;
+            border-color: #42B41C;
+            background-color: #42B41C;
+        }
+
+        .page-link:hover {
+            color: #fff;
+            border-color: #4bd11e;
+            background-color: #4bd11e;
+        }
+    </style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>File Explorer</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body">
+        <!-- Toolbar -->
+        <div class="d-flex flex-wrap gap-2 mb-3 pt-3">
+            <button class="btn btn-success" onclick="showCreateFolderModal()">
+                <i class="bi bi-folder-plus"></i> New Folder
+            </button>
+            <a href="/file/upload" class="btn btn-success">
+                <i class="bi bi-cloud-arrow-up"></i> Upload
+            </a>
+            <div id="bulkActions" class="d-flex gap-2">
+                <button class="btn btn-danger btn-sm" onclick="bulkDelete()">
+                    <i class="bi bi-trash"></i> Delete Selected
+                </button>
+                <select class="form-control form-control-sm" style="width:auto;" id="bulkAccessSelect" onchange="bulkChangeAccess()">
+                    <option value="">Change Access...</option>
+                    <option value="1">Set to Public</option>
+                    <option value="2">Set to Public Once</option>
+                    <option value="3">Set to Private</option>
+                </select>
+                <button class="btn btn-warning btn-sm" onclick="bulkMoveToFolder()">
+                    <i class="bi bi-folder"></i> Move Selected
+                </button>
+            </div>
+        </div>
+
+        <!-- Breadcrumb Navigation -->
+        <div id="folderBreadcrumb" class="mb-3"></div>
+
+        <!-- File Table -->
+        <div class="table-responsive">
+            <table id="file_listing" class="table table-hover table-striped" style="width:100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th style="width:30px;">
+                            <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+                        </th>
+                        <th>Name</th>
+                        <th>Size</th>
+                        <th>Alias</th>
+                        <th>Date</th>
+                        <th>User</th>
+                        <th>Access</th>
+                        <th style="width:200px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Create Folder Modal -->
+<div class="modal fade" id="createFolderModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Create New Folder</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="folderName" class="form-label">Folder Name</label>
+          <input type="text" class="form-control" id="folderName" required>
+        </div>
+        <div class="mb-3">
+          <label for="folderAccess" class="form-label">Minimum Required Role</label>
+          <select class="form-control" id="folderAccess">
+            <option value="2" selected>Upload Only (Upload role or higher)</option>
+            <option value="3">Operator (Operator role or higher)</option>
+            <option value="4">Administrator (Administrators only)</option>
+          </select>
+          <small class="form-text text-muted">Only users with the selected role or higher can access this folder</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" onclick="createFolder()">Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Folder Modal -->
+<div class="modal fade" id="renameFolderModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Rename Folder</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="renameFolderId">
+        <div class="mb-3">
+          <label for="newFolderName" class="form-label">New Folder Name</label>
+          <input type="text" class="form-control" id="newFolderName" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="renameFolder()">Rename</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Move File Modal -->
+<div class="modal fade" id="moveFileModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="moveFileModalTitle">Move File</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="singleFileFolderSelect" class="form-label">Select Destination Folder</label>
+          <select class="form-control" id="singleFileFolderSelect">
+            <option value="">Root Directory</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" onclick="executeSingleFileMove()">Move</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Move Modal -->
+<div class="modal fade" id="bulkMoveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Move Selected Files</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="targetFolderSelect" class="form-label">Select Destination Folder</label>
+          <select class="form-control" id="targetFolderSelect">
+            <option value="">Root Directory</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" onclick="executeBulkMove()">Move Files</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block html_footer %}
+  <script src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/1.10.19/js/dataTables.bootstrap4.min.js"></script>
+  <script>
+    // Set current user role for permission checks
+    window.currentUserRole = {{ token['role'] }};
+
+    // Sync disk files on page load then load file listing
+    $(document).ready(function() {
+        if (document.getElementById('ParamKey')) {
+            refreshParamKey();
+            setInterval(refreshParamKey, 15000);
+        }
+        ReMapFiles();
+        ListFiles();
+    });
+  </script>
+  {{ status_msg }}
+{% endblock %}

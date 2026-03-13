@@ -1,0 +1,8 @@
+flask
+PyJWT
+gevent
+requests
+MarkupSafe
+pyOpenSSL
+pyotp
+qrcode[pil]

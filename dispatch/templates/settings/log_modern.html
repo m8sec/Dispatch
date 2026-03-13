@@ -1,0 +1,537 @@
+{% extends "master.html" %}
+
+{% block title %}
+System Log
+{% endblock %}
+
+{% block html_head %}
+<style>
+    .log-viewer {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        padding: 24px;
+    }
+
+    .log-toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 12px 16px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .log-filters {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        flex: 1;
+    }
+
+    .log-stats {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card {
+        flex: 1;
+        padding: 16px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-left: 4px solid #42B41C;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        color: #6c757d;
+        margin-bottom: 4px;
+    }
+
+    .stat-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #212529;
+    }
+
+    .log-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .log-table th {
+        background: #f8f9fa;
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+        border-bottom: 2px solid #dee2e6;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .log-table td {
+        padding: 12px;
+        border-bottom: 1px solid #dee2e6;
+        vertical-align: top;
+    }
+
+    .log-table tr:hover {
+        background: #f8f9fa;
+    }
+
+    .log-level {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .log-level-info {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .log-level-warning {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .log-level-error {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .log-level-critical {
+        background: #dc3545;
+        color: white;
+    }
+
+    .log-level-debug {
+        background: #e7e7e7;
+        color: #495057;
+    }
+
+    .log-message {
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        word-break: break-word;
+    }
+
+    .log-timestamp {
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        color: #6c757d;
+        white-space: nowrap;
+    }
+
+    .log-user {
+        font-weight: 600;
+        color: #42B41C;
+    }
+
+    .log-ip {
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        color: #6c757d;
+    }
+
+    .log-container {
+        max-height: calc(100vh - 400px);
+        overflow-y: auto;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
+
+    .empty-logs {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6c757d;
+    }
+
+    .empty-logs i {
+        font-size: 64px;
+        margin-bottom: 16px;
+        opacity: 0.3;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #42B41C;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .log-btn {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        font-size: 13px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .refresh-btn {
+        background: #42B41C;
+        color: white;
+    }
+
+    .refresh-btn:hover {
+        background: #4bd11e;
+    }
+
+    .clear-filters-btn {
+        background: #6c757d;
+        color: white;
+    }
+
+    .clear-filters-btn:hover {
+        background: #5a6268;
+    }
+
+    .clear-logs-btn {
+        background: #dc3545;
+        color: white;
+    }
+
+    .clear-logs-btn:hover {
+        background: #c82333;
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>System Log</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item"><a href="/settings">Settings</a></li>
+      <li class="breadcrumb-item active">Log</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="log-viewer">
+    <!-- Stats Cards -->
+    <div class="log-stats">
+        <div class="stat-card">
+            <div class="stat-label">Total Entries</div>
+            <div class="stat-value" id="totalLogs">0</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#dc3545;">
+            <div class="stat-label">Errors</div>
+            <div class="stat-value" id="errorCount">0</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#ffc107;">
+            <div class="stat-label">Warnings</div>
+            <div class="stat-value" id="warningCount">0</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#17a2b8;">
+            <div class="stat-label">Last Updated</div>
+            <div class="stat-value" style="font-size:16px;" id="lastUpdated">--</div>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="log-toolbar">
+        <div class="log-filters">
+            <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Search..." style="width:150px;">
+
+            <select class="form-control form-control-sm" id="levelFilter" style="width:100px;">
+                <option value="">Level</option>
+                <option value="INFO">Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="ERROR">Error</option>
+                <option value="CRITICAL">Critical</option>
+            </select>
+
+            <input type="text" class="form-control form-control-sm" id="userFilter" placeholder="User..." style="width:100px;">
+
+            <select class="form-control form-control-sm" id="limitSelect" style="width:90px;">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+            </select>
+
+            <button class="log-btn clear-filters-btn" onclick="clearFilters()">
+                <i class="bi bi-x-circle"></i> Clear
+            </button>
+
+            <button class="log-btn refresh-btn" onclick="loadLogs()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+
+            {% if token['role'] >= 4 %}
+            <button class="log-btn clear-logs-btn" onclick="confirmClearLogs()">
+                <i class="bi bi-trash"></i> Clear Logs
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="loading" style="display:none;">
+        <div class="spinner"></div>
+        <p style="margin-top:16px;color:#6c757d;">Loading logs...</p>
+    </div>
+
+    <!-- Log Table -->
+    <div class="log-container" id="logContainer" style="display:none;">
+        <table class="log-table">
+            <thead>
+                <tr>
+                    <th style="width:180px;">Timestamp</th>
+                    <th style="width:100px;">Level</th>
+                    <th style="width:130px;">IP Address</th>
+                    <th style="width:120px;">User</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody id="logTableBody">
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-logs" style="display:none;">
+        <i class="bi bi-file-earmark-text"></i>
+        <h5>No logs found</h5>
+        <p>No log entries match your current filters</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+<script>
+const isAdmin = {{ 'true' if token['role'] >= 4 else 'false' }};
+// ===== LOG VIEWER STATE =====
+const LogState = {
+    logs: [],
+    filteredLogs: [],
+    autoRefresh: null
+};
+
+// ===== INITIALIZATION =====
+window.onload = function() {
+    loadLogs();
+
+    // Setup event listeners
+    document.getElementById('searchInput').addEventListener('input', debounce(applyFilters, 300));
+    document.getElementById('levelFilter').addEventListener('change', applyFilters);
+    document.getElementById('userFilter').addEventListener('input', debounce(applyFilters, 300));
+    document.getElementById('limitSelect').addEventListener('change', loadLogs);
+
+    // Auto-refresh every 30 seconds
+    LogState.autoRefresh = setInterval(loadLogs, 30000);
+};
+
+// ===== LOAD LOGS =====
+async function loadLogs() {
+    showLoading(true);
+
+    const limit = document.getElementById('limitSelect').value;
+
+    try {
+        const response = await fetch(`/api/logs/list?limit=${limit}`);
+        if (!response.ok) {
+            throw new Error('Failed to load logs');
+        }
+
+        LogState.logs = await response.json();
+        applyFilters();
+        updateStats();
+
+    } catch (error) {
+        console.error('Error loading logs:', error);
+        showError('Failed to load logs');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ===== APPLY FILTERS =====
+function applyFilters() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const level = document.getElementById('levelFilter').value;
+    const user = document.getElementById('userFilter').value.toLowerCase();
+
+    LogState.filteredLogs = LogState.logs.filter(log => {
+        // Search filter
+        if (search && !log.message.toLowerCase().includes(search) && !log.user.toLowerCase().includes(search)) {
+            return false;
+        }
+
+        // Level filter
+        if (level && log.level !== level) {
+            return false;
+        }
+
+        // User filter
+        if (user && !log.user.toLowerCase().includes(user)) {
+            return false;
+        }
+
+        return true;
+    });
+
+    renderLogs();
+}
+
+// ===== RENDER LOGS =====
+function renderLogs() {
+    const tbody = document.getElementById('logTableBody');
+    const container = document.getElementById('logContainer');
+    const emptyState = document.getElementById('emptyState');
+
+    if (LogState.filteredLogs.length === 0) {
+        container.style.display = 'none';
+        emptyState.style.display = 'block';
+        return;
+    }
+
+    emptyState.style.display = 'none';
+    container.style.display = 'block';
+
+    let html = '';
+    LogState.filteredLogs.forEach(log => {
+        const levelClass = `log-level log-level-${log.level.toLowerCase()}`;
+
+        html += `
+            <tr>
+                <td class="log-timestamp">${escapeHtml(log.timestamp)}</td>
+                <td><span class="${levelClass}">${escapeHtml(log.level)}</span></td>
+                <td class="log-ip">${escapeHtml(log.ip)}</td>
+                <td class="log-user">${escapeHtml(log.user)}</td>
+                <td class="log-message">${escapeHtml(log.message)}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+// ===== UPDATE STATS =====
+function updateStats() {
+    document.getElementById('totalLogs').textContent = LogState.logs.length;
+
+    const errorCount = LogState.logs.filter(log => log.level === 'ERROR' || log.level === 'CRITICAL').length;
+    document.getElementById('errorCount').textContent = errorCount;
+
+    const warningCount = LogState.logs.filter(log => log.level === 'WARNING').length;
+    document.getElementById('warningCount').textContent = warningCount;
+
+    const now = new Date();
+    document.getElementById('lastUpdated').textContent = now.toLocaleTimeString();
+}
+
+// ===== CLEAR FILTERS =====
+function clearFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('levelFilter').value = '';
+    document.getElementById('userFilter').value = '';
+    applyFilters();
+}
+
+// ===== CLEAR LOGS =====
+function confirmClearLogs() {
+    if (!isAdmin) {
+        alert('Administrator access required to clear logs.');
+        return;
+    }
+    if (confirm('Are you sure you want to clear ALL logs? This action cannot be undone.')) {
+        clearLogs();
+    }
+}
+
+async function clearLogs() {
+    if (!isAdmin) {
+        alert('Administrator access required to clear logs.');
+        return;
+    }
+    try {
+        const response = await fetch('/api/logs/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('Logs cleared successfully!');
+            loadLogs();
+        } else {
+            alert('Failed to clear logs: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Error clearing logs:', error);
+        alert('Failed to clear logs. Please try again.');
+    }
+}
+
+// ===== UTILITY FUNCTIONS =====
+function showLoading(loading) {
+    document.getElementById('loadingState').style.display = loading ? 'block' : 'none';
+    document.getElementById('logContainer').style.display = loading ? 'none' : 'block';
+}
+
+function showError(message) {
+    const emptyState = document.getElementById('emptyState');
+    emptyState.innerHTML = `
+        <i class="bi bi-exclamation-triangle" style="color:#dc3545;"></i>
+        <h5>Error Loading Logs</h5>
+        <p>${escapeHtml(message)}</p>
+    `;
+    emptyState.style.display = 'block';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+}
+
+// Clean up on page unload
+window.onbeforeunload = function() {
+    if (LogState.autoRefresh) {
+        clearInterval(LogState.autoRefresh);
+    }
+};
+</script>
+{% endblock %}

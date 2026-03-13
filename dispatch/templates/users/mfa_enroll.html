@@ -1,0 +1,206 @@
+{% extends "master.html" %}
+
+{% block title %}MFA Required{% endblock %}
+
+{% block html_head %}
+<style>
+    .enroll-container {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .qr-container {
+        text-align: center;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        margin: 20px 0;
+    }
+
+    .qr-container img {
+        max-width: 200px;
+        border: 4px solid #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .secret-key {
+        font-family: monospace;
+        font-size: 16px;
+        letter-spacing: 2px;
+        background: #1c1c1c;
+        color: #42B41C;
+        padding: 10px 15px;
+        border-radius: 4px;
+        word-break: break-all;
+    }
+
+    .totp-input {
+        font-size: 24px;
+        letter-spacing: 8px;
+        text-align: center;
+        font-family: monospace;
+        max-width: 200px;
+    }
+
+    .setup-step {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border-left: 4px solid #42B41C;
+    }
+
+    .setup-step h6 {
+        margin-bottom: 10px;
+        color: #42B41C;
+    }
+
+    .alert-warning {
+        border-left: 4px solid #ffc107;
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+    <h1>MFA Enrollment Required</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Home</a></li>
+            <li class="breadcrumb-item active">MFA Enrollment</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="enroll-container">
+    <div class="card">
+        <div class="card-body">
+            <div class="alert alert-warning" style="padding: 20px;margin-top:5px;">
+                <h5 style="margin-bottom: 12px"><i class="bi bi-shield-exclamation"></i>&nbsp;Two-Factor Authentication Required</h5>
+                <p class="mb-0">Your administrator has enabled mandatory two-factor authentication. You must set up MFA before you can access the system.</p>
+            </div>
+
+            <h5 class="card-title">
+                <i class="bi bi-shield-lock"></i>&nbsp;
+                Set Up MFA for {{ user.username }}
+            </h5>
+
+            <div id="setup-container">
+                <div class="setup-step">
+                    <h6><i class="bi bi-1-circle"></i> Generate QR Code</h6>
+                    <p>Click the button below to generate a QR code for your authenticator app (Google Authenticator, Authy, Microsoft Authenticator, etc.).</p>
+                    <button type="button" class="btn btn-success" onclick="generateQR()" id="generate-btn">
+                        <i class="bi bi-qr-code"></i>&nbsp;Generate QR Code
+                    </button>
+                </div>
+
+                <div id="qr-step" style="display: none;">
+                    <div class="setup-step">
+                        <h6><i class="bi bi-2-circle"></i> Scan QR Code</h6>
+                        <p>Open your authenticator app and scan this QR code:</p>
+                        <div class="qr-container">
+                            <img id="qr-image" src="" alt="MFA QR Code">
+                        </div>
+                        <p><strong>Manual Entry Key:</strong></p>
+                        <div class="secret-key" id="secret-key"></div>
+                        <small class="text-muted d-block mt-2">Save this key securely in case you need to recover your account.</small>
+                    </div>
+
+                    <div class="setup-step">
+                        <h6><i class="bi bi-3-circle"></i> Verify & Complete</h6>
+                        <p>Enter the 6-digit code from your authenticator app to complete enrollment:</p>
+                        <div class="row align-items-center">
+                            <div class="col-auto">
+                                <input type="text" class="form-control totp-input" id="verify-code"
+                                       maxlength="6" pattern="[0-9]{6}" inputmode="numeric"
+                                       placeholder="000000">
+                            </div>
+                            <div class="col-auto">
+                                <button type="button" class="btn btn-success" onclick="verifyMFA()">
+                                    <i class="bi bi-check-circle"></i>&nbsp;Verify & Enable MFA
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
+            <div class="text-muted small">
+                <i class="bi bi-info-circle"></i>&nbsp;
+                Need help? Contact your system administrator if you're having trouble setting up MFA.
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+<script>
+    const userId = {{ user.id }};
+
+    function generateQR() {
+        const btn = document.getElementById('generate-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i>&nbsp;Generating...';
+
+        fetch('/api/mfa/setup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: userId})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, false);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-qr-code"></i>&nbsp;Generate QR Code';
+            } else {
+                document.getElementById('qr-image').src = data.qr_code;
+                document.getElementById('secret-key').textContent = data.secret;
+                document.getElementById('qr-step').style.display = 'block';
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>&nbsp;Regenerate QR Code';
+                btn.disabled = false;
+            }
+        })
+        .catch(err => {
+            showNotification('Failed to generate QR code', false);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-qr-code"></i>&nbsp;Generate QR Code';
+        });
+    }
+
+    function verifyMFA() {
+        const code = document.getElementById('verify-code').value.trim();
+        if (code.length !== 6) {
+            showNotification('Please enter a 6-digit code', false);
+            return;
+        }
+
+        fetch('/api/mfa/verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: userId, code: code})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, false);
+            } else {
+                showNotification('MFA enabled successfully! Redirecting...', true);
+                setTimeout(() => window.location.href = '/', 1500);
+            }
+        })
+        .catch(err => {
+            showNotification('Failed to verify code', false);
+        });
+    }
+
+    // Auto-format TOTP input
+    document.getElementById('verify-code')?.addEventListener('input', function(e) {
+        this.value = this.value.replace(/[^0-9]/g, '');
+    });
+</script>
+{% endblock %}

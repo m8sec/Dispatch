@@ -1,0 +1,8 @@
+# Ignore everything
+*
+
+# But don't ignore this .gitignore file
+!.gitignore
+
+# Optionally keep a placeholder file
+!.gitkeep

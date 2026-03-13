@@ -1,0 +1,127 @@
+{% extends "master.html" %}
+
+{% block title %}
+Admin Interface
+{% endblock %}
+
+{% block html_head %}
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Admin Interface Settings</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item active">Admin Interface</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card" style="width:80%;">
+    <div class="card-body">
+      <h5 class="card-title">Admin Interface Configuration</h5>
+        <form action="/settings/admin" method="post" class="row g-3">
+            <input type="hidden" name="form_type" value="admin_settings">
+            <table class="table table-borderless table-striped">
+                <tr>
+                    <td>
+                        <b>Max File Size</b><br>
+                        <i>Maximum file upload size in bytes. (Default: 16MB = 16000000)</i>
+                    </td>
+                    <td style="vertical-align: middle;">
+                        <input type="number" name="max_size" class="form-control" value="{{ config['MAX_CONTENT_LENGTH'] }}" required>
+                    </td>
+                </tr>
+            </table>
+
+            <div class="col-md-3">
+              <button class="btn btn-success w-100" type="submit">
+                <i class="bi bi-tools"></i>&nbsp;
+                Save Settings
+              </button>
+            </div>
+        </form>
+    </div>
+</div>
+<div class="card" style="width:80%;">
+  <div class="card-body">
+    <form action="/settings/admin" method="post" enctype="multipart/form-data">
+        <h5 class="card-title">Login Restrictions</h5>
+        <input type="hidden" name="form_type" value="login_restrictions">
+        <div class="col-md-12" style="padding-bottom:25px;">
+            <div style="padding-bottom:8px;">
+                <b>Login Allow List</b><br>
+                <i>If provided, only the source IP addresses listed below will be permitted to access the Dispatch login page.
+                Leave empty to allow all IP addresses.</i>
+            </div>
+            <textarea class="form-control" name="allow_login" rows="6" placeholder="One IP, domain, or CIDR per line">{{ '\n'.join(config['allow_login']) }}</textarea>
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-success w-100" type="submit">
+            <i class="bi bi-shield-lock"></i>&nbsp;
+            Save Restrictions
+          </button>
+        </div>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="width:80%;">
+  <div class="card-body">
+    <form action="/settings/admin" method="post">
+        <h5 class="card-title">Discord Webhook</h5>
+        <input type="hidden" name="form_type" value="webhook_settings">
+        <div class="col-md-12" style="padding-bottom:25px;">
+            <div style="padding-bottom:8px;">
+                <b>Webhook URL</b><br>
+                <i>Discord webhook URL for alerts and script notifications. Leave empty to disable.</i>
+            </div>
+            <input type="text" class="form-control" name="webhook_url"
+                   placeholder="https://discord.com/api/webhooks/..."
+                   value="{{ config.get('webhook_url', '') or '' }}">
+        </div>
+        <div class="row">
+            <div class="col-md-3">
+              <button class="btn btn-success w-100" type="submit">
+                <i class="bi bi-save"></i>&nbsp;
+                Save Webhook
+              </button>
+            </div>
+            <div class="col-md-3">
+              <button type="button" class="btn btn-outline-secondary w-100" onclick="testWebhook()">
+                <i class="bi bi-send"></i>&nbsp;
+                Test Webhook
+              </button>
+            </div>
+        </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function testWebhook() {
+    fetch('/api/webhook/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Webhook test successful!', true);
+        } else {
+            showNotification('Webhook test failed: ' + data.message, false);
+        }
+    })
+    .catch(error => {
+        showNotification('Webhook test failed: ' + error, false);
+    });
+}
+</script>
+{% endblock %}
+
+{% block html_footer %}
+  {{ status_msg }}
+{% endblock %}

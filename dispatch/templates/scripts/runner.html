@@ -1,0 +1,607 @@
+{% extends "master.html" %}
+
+{% block title %}
+Script Runner
+{% endblock %}
+
+{% block html_head %}
+<style>
+    #scriptEditor {
+        font-family: 'Courier New', monospace;
+        font-size: 14px;
+        min-height: 300px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+
+    #consoleOutput {
+        background-color: #1e1e1e;
+        color: #00ff00;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        padding: 15px;
+        border-radius: 4px;
+        min-height: 200px;
+        max-height: 400px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+    }
+
+    .script-item {
+        padding: 10px;
+        margin: 5px 0;
+        border-left: 3px solid #42B41C;
+        background-color: #f8f9fa;
+        cursor: pointer;
+    }
+
+    .script-item:hover {
+        background-color: #e9ecef;
+    }
+
+    .script-item.selected {
+        background-color: #d4edda;
+        border-left-color: #28a745;
+    }
+
+    .schedule-badge {
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-left: 5px;
+    }
+
+    .schedule-options {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 10px;
+    }
+
+    .notify-badge {
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-left: 5px;
+        background: #17a2b8;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Script Runner</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item active">Scripts</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="row">
+    <!-- Script Editor -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Script Editor</h5>
+                <div class="mb-3">
+                    <label for="scriptName" class="form-label">Script Name</label>
+                    <input type="text" class="form-control" id="scriptName" placeholder="My Script">
+                </div>
+                <div class="mb-3">
+                    <label for="scriptDescription" class="form-label">Description</label>
+                    <input type="text" class="form-control" id="scriptDescription" placeholder="What does this script do?">
+                </div>
+                <div class="mb-3">
+                    <label for="scriptEditor" class="form-label">Python Script</label>
+                    <textarea class="form-control" id="scriptEditor" rows="12" placeholder="print('Hello, World!')"></textarea>
+                </div>
+
+                <!-- Schedule Options -->
+                <div class="mb-2">
+                    <label class="form-label">Schedule</label>
+                    <select class="form-control" id="scheduleType" style="max-width:220px;" onchange="toggleScheduleOptions()">
+                        <option value="manual">Manual Only</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+
+                <div id="scheduleOptionsContainer" class="schedule-options" style="display:none;">
+                    <div class="row">
+                        <div class="col-md-4" id="dayOfWeekContainer" style="display:none;">
+                            <label class="form-label">Day of Week</label>
+                            <select class="form-control" id="scheduleDayOfWeek">
+                                <option value="0">Sunday</option>
+                                <option value="1">Monday</option>
+                                <option value="2">Tuesday</option>
+                                <option value="3">Wednesday</option>
+                                <option value="4">Thursday</option>
+                                <option value="5">Friday</option>
+                                <option value="6">Saturday</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4" id="dayOfMonthContainer" style="display:none;">
+                            <label class="form-label">Day of Month</label>
+                            <select class="form-control" id="scheduleDayOfMonth">
+                                <script>
+                                    for(var i=1; i<=28; i++) {
+                                        document.write('<option value="'+i+'">'+i+'</option>');
+                                    }
+                                </script>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" id="scheduleTimeLabel">Time</label>
+                            <input type="time" class="form-control" id="scheduleTime" value="00:00">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="scriptEnabled" checked>
+                            <label class="form-check-label" for="scriptEnabled">Schedule Enabled</label>
+                        </div>
+                        <div class="mt-2 text-muted" id="schedulePreview" style="font-size:12px;"></div>
+                    </div>
+                </div>
+
+                <!-- Output Options -->
+                <div class="mb-3" id="outputOptionsSection">
+                    <label class="form-label">
+                        <i class="bi bi-terminal"></i> Output Destinations
+                    </label>
+                    <div id="notificationDisabledMessage" class="text-muted" style="display:none;font-size:12px;margin-bottom:8px;">
+                        Configure a Discord webhook in Admin Settings to enable Discord output.
+                    </div>
+                    <div class="schedule-options">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="showCliOutput" checked>
+                            <label class="form-check-label" for="showCliOutput">
+                                <strong>Show output in Console Output</strong>
+                            </label>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="notifyEnabled" onchange="toggleNotifyOptions()">
+                            <label class="form-check-label" for="notifyEnabled">
+                                <strong>Send output to Discord</strong>
+                            </label>
+                        </div>
+
+                        <div id="notifyOptionsContainer">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="form-label">When to Notify</label>
+                                    <select class="form-control" id="notifyOn">
+                                        <option value="always">Always (success or failure)</option>
+                                        <option value="success">Only on Success</option>
+                                        <option value="failure">Only on Failure</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-check form-switch mt-3">
+                                <input class="form-check-input" type="checkbox" id="notifySkipBlank" checked>
+                                <label class="form-check-label" for="notifySkipBlank">
+                                    Do not notify on blank output
+                                </label>
+                            </div>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="notifyPlain">
+                                <label class="form-check-label" for="notifyPlain">
+                                    Send plain output (no title/status frame)
+                                </label>
+                            </div>
+                            <div class="form-check form-switch mt-2" id="notifyPlainNoCodeblockWrapper" style="display:none;">
+                                <input class="form-check-input" type="checkbox" id="notifyPlainNoCodeblock">
+                                <label class="form-check-label" for="notifyPlainNoCodeblock">
+                                    Send outside code block
+                                </label>
+                            </div>
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i>
+                                    Notifications are sent to the configured webhook when scripts are executed manually or via schedule.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3 mt-3">
+                    <button class="btn btn-primary" onclick="executeScript()">
+                        <i class="bi bi-play-circle"></i> Execute Now
+                    </button>
+                    <button class="btn btn-warning" onclick="saveScript()">
+                        <i class="bi bi-save"></i> Save Script
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="newScript()">
+                        <i class="bi bi-arrow-counterclockwise"></i> Reset
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteScript()" id="deleteScriptBtn" style="display:none;">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Console Output -->
+        <div class="card mt-3">
+            <div class="card-body">
+                <h5 class="card-title">
+                    Console Output
+                    <button class="btn btn-secondary btn-sm float-end" onclick="clearConsole()">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </button>
+                </h5>
+                <div id="consoleOutput">Waiting for script execution...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script List -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    Saved Scripts
+                    <button class="btn btn-success btn-sm float-end" onclick="newScript()">
+                        <i class="bi bi-plus-circle"></i> New
+                    </button>
+                </h5>
+                <div id="scriptList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+<script>
+    var currentScriptId = null;
+    var lastConsoleOutput = null;
+    var hasWebhook = {% if has_webhook %}true{% else %}false{% endif %};
+
+    function toggleScheduleOptions() {
+        var scheduleType = $('#scheduleType').val();
+        if (scheduleType === 'manual') {
+            $('#scheduleOptionsContainer').hide();
+        } else {
+            $('#scheduleOptionsContainer').show();
+            $('#dayOfWeekContainer').toggle(scheduleType === 'weekly');
+            $('#dayOfMonthContainer').toggle(scheduleType === 'monthly');
+            $('#scheduleTimeLabel').text(scheduleType === 'hourly' ? 'Minute' : 'Time');
+        }
+        updateSchedulePreview();
+    }
+
+    function toggleNotifyOptions() {
+        if (!hasWebhook) {
+            $('#notifyEnabled').prop('checked', false).prop('disabled', true);
+            $('#notificationDisabledMessage').show();
+        } else {
+            $('#notifyEnabled').prop('disabled', false);
+            $('#notificationDisabledMessage').hide();
+        }
+
+        var notifyEnabled = hasWebhook && $('#notifyEnabled').is(':checked');
+        $('#notifyOn, #notifySkipBlank, #notifyPlain').prop('disabled', !notifyEnabled);
+        $('#notifySkipBlank').closest('.form-check').toggle(notifyEnabled);
+        $('#notifyPlain').closest('.form-check').toggle(notifyEnabled);
+        var showPlainOptions = notifyEnabled && $('#notifyPlain').is(':checked');
+        $('#notifyPlainNoCodeblockWrapper').toggle(showPlainOptions);
+        $('#notifyPlainNoCodeblock').prop('disabled', !showPlainOptions);
+    }
+
+    function updateSchedulePreview() {
+        var scheduleType = $('#scheduleType').val();
+        if (scheduleType === 'manual') {
+            $('#schedulePreview').text('');
+            return;
+        }
+
+        var time = $('#scheduleTime').val() || '00:00';
+        var text = '';
+        if (scheduleType === 'hourly') {
+            var minute = time.split(':')[1] || '00';
+            text = 'Runs every hour at minute ' + minute + '.';
+        } else if (scheduleType === 'daily') {
+            text = 'Runs daily at ' + time + '.';
+        } else if (scheduleType === 'weekly') {
+            var dayText = $('#scheduleDayOfWeek option:selected').text();
+            text = 'Runs every ' + dayText + ' at ' + time + '.';
+        } else if (scheduleType === 'monthly') {
+            var day = $('#scheduleDayOfMonth').val();
+            text = 'Runs monthly on day ' + day + ' at ' + time + '.';
+        }
+        $('#schedulePreview').text(text);
+    }
+
+    function loadScripts() {
+        $.ajax({
+            url: '/api/scripts/list',
+            type: 'GET',
+            dataType: 'json',
+            success: function(scripts) {
+                var html = '';
+                if (scripts.length === 0) {
+                    html = '<p class="text-muted">No scripts yet. Create one!</p>';
+                } else {
+                    scripts.forEach(function(script) {
+                        var lastRun = script.last_run ? '<br><small>Last run: ' + script.last_run + '</small>' : '';
+                        var scheduleBadge = '';
+                        if (script.schedule_type && script.schedule_type !== 'manual') {
+                            var badgeClass = script.enabled ? 'bg-success' : 'bg-secondary';
+                            scheduleBadge = '<span class="schedule-badge ' + badgeClass + '">' + script.schedule_type + '</span>';
+                        }
+                        var notifyBadge = '';
+                        if (script.notify_enabled == 1) {
+                            notifyBadge = '<span class="notify-badge"><i class="bi bi-bell"></i></span>';
+                        }
+
+                        html += '<div class="script-item" onclick="loadScript(' + script.id + ')">';
+                        html += '<strong>' + script.name + '</strong>' + scheduleBadge + notifyBadge;
+                        html += '<br><small class="text-muted">' + (script.description || 'No description') + '</small>';
+                        if (script.schedule_type !== 'manual' && script.schedule_time) {
+                            html += '<br><small class="text-info"><i class="bi bi-clock"></i> ' + formatSchedule(script) + '</small>';
+                        }
+                        html += lastRun;
+                        html += '</div>';
+                    });
+                }
+                $('#scriptList').html(html);
+            }
+        });
+    }
+
+    function formatSchedule(script) {
+        var time = script.schedule_time || '00:00';
+        switch(script.schedule_type) {
+            case 'hourly':
+                var minute = time.split(':')[1] || '00';
+                return 'Hourly at minute ' + minute;
+            case 'daily':
+                return 'Daily at ' + time;
+            case 'weekly':
+                var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                return 'Every ' + days[script.schedule_day_of_week || 0] + ' at ' + time;
+            case 'monthly':
+                return 'Monthly on day ' + (script.schedule_day_of_month || 1) + ' at ' + time;
+            default:
+                return 'Manual';
+        }
+    }
+
+    function loadScript(scriptId) {
+        $.ajax({
+            url: '/api/scripts/list',
+            type: 'GET',
+            dataType: 'json',
+            success: function(scripts) {
+                var script = scripts.find(s => s.id === scriptId);
+                if (script) {
+                    currentScriptId = script.id;
+                    $('#scriptName').val(script.name);
+                    $('#scriptDescription').val(script.description || '');
+                    $('#scriptEditor').val(script.script_content);
+                    $('#scheduleType').val(script.schedule_type || 'manual');
+                    $('#scheduleTime').val(script.schedule_time || '00:00');
+                    $('#scheduleDayOfWeek').val(script.schedule_day_of_week || 0);
+                    $('#scheduleDayOfMonth').val(script.schedule_day_of_month || 1);
+                    $('#scriptEnabled').prop('checked', script.enabled == 1);
+                    $('#deleteScriptBtn').show();
+
+                    // Load notification settings
+                    $('#notifyEnabled').prop('checked', hasWebhook && script.notify_enabled == 1);
+                    $('#notifyOn').val(script.notify_on || 'always');
+                    $('#notifySkipBlank').prop('checked', script.notify_skip_blank != 0);
+                    $('#notifyPlain').prop('checked', script.notify_plain == 1);
+                    $('#notifyPlainNoCodeblock').prop('checked', script.notify_plain_no_codeblock == 1);
+                    toggleNotifyOptions();
+
+                    toggleScheduleOptions();
+                    updateSchedulePreview();
+
+                    // Highlight selected script
+                    $('.script-item').removeClass('selected');
+                    $('.script-item').eq(scripts.findIndex(s => s.id === scriptId)).addClass('selected');
+
+                    // Show last output if available
+                    if (script.last_output) {
+                        $('#consoleOutput').text(script.last_output);
+                        lastConsoleOutput = script.last_output;
+                    } else {
+                        lastConsoleOutput = null;
+                    }
+                }
+            }
+        });
+    }
+
+    function refreshCurrentScriptOutput() {
+        if (!currentScriptId) return;
+        if (!$('#showCliOutput').is(':checked')) return;
+        $.ajax({
+            url: '/api/scripts/list',
+            type: 'GET',
+            dataType: 'json',
+            success: function(scripts) {
+                var script = scripts.find(s => s.id === currentScriptId);
+                if (!script) return;
+                if (script.last_output && script.last_output !== lastConsoleOutput) {
+                    $('#consoleOutput').text(script.last_output);
+                    lastConsoleOutput = script.last_output;
+                }
+            }
+        });
+    }
+
+    function newScript() {
+        currentScriptId = null;
+        $('#scriptName').val('');
+        $('#scriptDescription').val('');
+        $('#scriptEditor').val('');
+        $('#scheduleType').val('manual');
+        $('#scheduleTime').val('00:00');
+        $('#scheduleDayOfWeek').val(0);
+        $('#scheduleDayOfMonth').val(1);
+        $('#scriptEnabled').prop('checked', true);
+        $('#showCliOutput').prop('checked', true);
+        // Reset notification settings
+        $('#notifyEnabled').prop('checked', false);
+        $('#notifyOn').val('always');
+        $('#notifySkipBlank').prop('checked', true);
+        $('#notifyPlain').prop('checked', false);
+        $('#notifyPlainNoCodeblock').prop('checked', false);
+        toggleNotifyOptions();
+        $('#deleteScriptBtn').hide();
+        $('#consoleOutput').text('Waiting for script execution...');
+        $('.script-item').removeClass('selected');
+        toggleScheduleOptions();
+        updateSchedulePreview();
+    }
+
+    function saveScript() {
+        var scheduleType = $('#scheduleType').val();
+        var data = {
+            name: $('#scriptName').val().trim(),
+            description: $('#scriptDescription').val().trim(),
+            script_content: $('#scriptEditor').val(),
+            schedule_type: scheduleType,
+            schedule_time: scheduleType !== 'manual' ? $('#scheduleTime').val() : null,
+            schedule_day_of_week: scheduleType === 'weekly' ? parseInt($('#scheduleDayOfWeek').val()) : null,
+            schedule_day_of_month: scheduleType === 'monthly' ? parseInt($('#scheduleDayOfMonth').val()) : null,
+            enabled: $('#scriptEnabled').is(':checked') ? 1 : 0,
+            // Notification settings
+            notify_enabled: (hasWebhook && $('#notifyEnabled').is(':checked')) ? 1 : 0,
+            notify_on: $('#notifyOn').val() || 'always',
+            notify_skip_blank: $('#notifySkipBlank').is(':checked') ? 1 : 0,
+            notify_plain: $('#notifyPlain').is(':checked') ? 1 : 0,
+            notify_plain_no_codeblock: $('#notifyPlainNoCodeblock').is(':checked') ? 1 : 0
+        };
+
+        if (!data.name) {
+            showNotification('Script name is required', false);
+            return;
+        }
+
+        if (!data.script_content) {
+            showNotification('Script content is required', false);
+            return;
+        }
+
+        var url = currentScriptId ? '/api/script/update' : '/api/script/create';
+        if (currentScriptId) {
+            data.id = currentScriptId;
+        }
+
+        $.ajax({
+            url: url,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(response) {
+                showNotification('Script saved successfully!', true);
+                if (response.id) {
+                    currentScriptId = response.id;
+                    $('#deleteScriptBtn').show();
+                }
+                loadScripts();
+            },
+            error: function() {
+                showNotification('Failed to save script', false);
+            }
+        });
+    }
+
+    function executeScript() {
+        var scriptContent = $('#scriptEditor').val();
+        if (!scriptContent.trim()) {
+            showNotification('No script to execute', false);
+            return;
+        }
+
+        $('#consoleOutput').text('Executing script...\n');
+        lastConsoleOutput = null;
+
+        $.ajax({
+            url: '/api/script/execute',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                id: currentScriptId,
+                script_content: scriptContent,
+                notify_enabled: (hasWebhook && $('#notifyEnabled').is(':checked')) ? 1 : 0,
+                notify_override: 1,
+                notify_on: $('#notifyOn').val() || 'always',
+                notify_skip_blank: $('#notifySkipBlank').is(':checked') ? 1 : 0,
+                notify_plain: $('#notifyPlain').is(':checked') ? 1 : 0,
+                notify_plain_no_codeblock: $('#notifyPlainNoCodeblock').is(':checked') ? 1 : 0,
+                script_name: $('#scriptName').val().trim() || 'Ad-hoc Script'
+            }),
+            success: function(response) {
+                var output = response.output || 'No output';
+                var status = response.success ? '✅ Success' : '❌ Error';
+                if ($('#showCliOutput').is(':checked')) {
+                    $('#consoleOutput').text(status + ' (exit code: ' + response.returncode + ')\n\n' + output);
+                } else {
+                    $('#consoleOutput').text(status + ' (exit code: ' + response.returncode + ')\n\nOutput display is disabled for this run.');
+                }
+                if (response.notify_error) {
+                    showNotification(response.notify_error, false);
+                } else if (response.notify_sent) {
+                    showNotification('Output sent to Discord.', true);
+                } else if (response.notify_skipped) {
+                    showNotification('Notification skipped: ' + response.notify_skipped, false);
+                }
+            },
+            error: function() {
+                $('#consoleOutput').text('❌ Failed to execute script');
+            }
+        });
+    }
+
+    function deleteScript() {
+        if (!currentScriptId) return;
+
+        if (!confirm('Are you sure you want to delete this script?')) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/script/delete',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ id: currentScriptId }),
+            success: function() {
+                showNotification('Script deleted successfully!', true);
+                newScript();
+                loadScripts();
+            },
+            error: function() {
+                showNotification('Failed to delete script', false);
+            }
+        });
+    }
+
+    function clearConsole() {
+        $('#consoleOutput').text('Console cleared.');
+    }
+
+    // Initialize page on load
+    $(document).ready(function() {
+        loadScripts();
+        toggleScheduleOptions();
+        updateSchedulePreview();
+        toggleNotifyOptions();
+
+        $('#scheduleType, #scheduleTime, #scheduleDayOfWeek, #scheduleDayOfMonth').on('change', updateSchedulePreview);
+        $('#notifyPlain').on('change', toggleNotifyOptions);
+        setInterval(refreshCurrentScriptOutput, 5000);
+    });
+</script>
+{% endblock %}

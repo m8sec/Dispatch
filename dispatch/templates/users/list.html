@@ -1,0 +1,187 @@
+{% extends "master.html" %}
+
+{% block title %}
+Users
+{% endblock %}
+
+{% block html_head %}
+    <style>
+        #userBulkActions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        #bulkRoleSelect {
+            height: 38px;
+            min-width: 170px;
+            border-radius: 0.375rem;
+        }
+
+        .actions {
+            padding:0;
+            margin:0;
+        }
+
+        .actions button{
+            color:black;
+            width: 30px;
+            text-align: center;
+            margin-right: 3px;
+            padding: 2px 1px 2px 1px;
+            border: 0 solid #42B41C;
+            background-color: #42B41C !important;
+        }
+
+        .page-link, .active>.page-link, .page-link.active {
+            color:black;
+            border: 0 solid #42B41C;
+            background-color: #42B41C;
+        }
+
+        .actions i{
+            padding: 0px;
+        }
+
+        .actions button:hover{
+            color:black;
+            border: 0 solid #4bd11e;
+            background-color: #4bd11e !important;
+        }
+
+        .actions button:active{
+            color:white;
+            border: 1 solid #4bd11e;
+            background-color: #1c1c1c !important;
+        }
+
+        div.dataTables_filter {
+            float:right!important;
+        }
+        .dataTable{
+            /*table-layout: fixed;*/
+            width: 100%;
+        }
+
+        .access_perms {
+            border:0;
+            font-size:13px;
+            background-color:#f0ebeb;
+        }
+
+        .access_perms:focus {
+            background-color:#f0ebeb;
+            z-index: 10;
+            box-shadow: none;
+        }
+
+        #file_listing {
+            font-size:14px;
+        }
+
+        #Users td {
+            vertical-align: middle;
+        }
+    </style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Users</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item active">Users</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body" style="width:100%;">
+      <div class="d-flex flex-wrap gap-2 mb-3 pt-3">
+          <a href="/user/add" class="btn btn-success">
+            <i class="bi bi-person-plus"></i> Add User
+          </a>
+          <div id="userBulkActions">
+              <button type="button" class="btn btn-danger" onclick="bulkDeleteUsers()">
+                <i class="bi bi-trash"></i> Delete Users
+              </button>
+              <select class="form-control form-control-sm" style="width:auto;" id="bulkRoleSelect" onchange="bulkChangeUserRole()">
+                <option value="">Change Role...</option>
+                <option value="0">Disabled</option>
+                <option value="1">Download Only</option>
+                <option value="2">Upload Only</option>
+                <option value="3">Operator</option>
+                <option value="4">Administrator</option>
+              </select>
+          </div>
+        </div>
+      <table class="table table-bordered" id="Users" style="cursor:pointer;width:100%" cellspacing="0">
+        <thead width="100%">
+            <tr>
+                <th style="width:32px;"><input type="checkbox" id="selectAllUsers" onchange="toggleSelectAllUsers(this)"></th>
+                <th><i class="bi bi-arrow-down-up"></i>&nbsp;&nbsp;Username</th>
+                <th><i class="bi bi-arrow-down-up"></i>&nbsp;&nbsp;Created</th>
+                <th><i class="bi bi-arrow-down-up"></i>&nbsp;&nbsp;Last Login</th>
+                <th></i>&nbsp;&nbsp;Role</th>
+                <th style="min-width:90px !important;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="height:0px;border:0px;display:none !important;">
+            </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+{% if token['role'] > 3 %}
+<div class="card">
+    <div class="card-body">
+      <h5 class="card-title">Two-Factor Authentication</h5>
+        <form action="/users" method="post" class="row g-3">
+            <input type="hidden" name="form_type" value="mfa_settings">
+            <table class="table table-borderless table-striped">
+                <tr>
+                    <td>
+                        <b>Require MFA for All Users</b><br>
+                        <i>When enabled, users without MFA configured will be prompted to set it up on their next login.
+                        Users will not be able to access the system until they complete MFA enrollment.</i>
+                    </td>
+                    <td style="vertical-align: middle; width: 80px;">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="mfa_required" id="mfa_required"
+                                   style="width: 50px; height: 26px;"
+                                   {{ 'checked' if config.get('mfa_required') else '' }}>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+            <div class="col-md-12" style="padding-bottom:10px;">
+                <div class="alert alert-info" style="margin-bottom:0;">
+                    <i class="bi bi-info-circle"></i>&nbsp;
+                    <strong>Note:</strong> MFA requires the <code>pyotp</code> and <code>qrcode</code> packages to be installed.
+                    Users can configure MFA from their profile settings.
+                </div>
+            </div>
+            <div class="col-md-3">
+              <button class="btn btn-success w-100" type="submit">
+                <i class="bi bi-shield-lock"></i>&nbsp;
+                Save MFA Settings
+              </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block html_footer %}
+  <script src="https://cdn.datatables.net/1.10.20/js/jquery.dataTables.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/1.10.20/js/dataTables.bootstrap4.min.js" crossorigin="anonymous"></script>
+  <script>ListUsers();</script>
+  {{ status_msg }}
+{% endblock %}

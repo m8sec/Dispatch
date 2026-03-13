@@ -1,0 +1,264 @@
+{% extends "master.html" %}
+
+{% block title %}
+Client Interface
+{% endblock %}
+
+{% block html_head %}
+<style>
+    .header-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: center;
+    }
+    .header-row input {
+        flex: 1;
+    }
+    .header-row .remove-btn {
+        padding: 6px 12px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .header-row .remove-btn:hover {
+        background: #c82333;
+    }
+    .add-header-btn {
+        margin-top: 10px;
+    }
+    .warning-box {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .warning-box i {
+        color: #856404;
+    }
+    .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    .status-enabled {
+        background: #28a745;
+    }
+    .status-disabled {
+        background: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Client Interface Settings</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item active">Client Interface</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<!-- Client Interface Status -->
+<div class="card" style="width:80%;">
+    <div class="card-body">
+      <h5 class="card-title">
+        <span class="status-indicator {{ 'status-enabled' if config.get('client_enabled', True) else 'status-disabled' }}"></span>
+        Client Interface Status
+      </h5>
+      <form action="/settings/client" method="post" class="row g-3">
+        <input type="hidden" name="form_type" value="client_status">
+        <div class="col-md-12">
+            <p>The client interface serves files to targets. Disabling it will prevent all file downloads.</p>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="client_enabled" id="clientEnabled" {{ 'checked' if config.get('client_enabled', True) }}>
+                <label class="form-check-label" for="clientEnabled">
+                    <strong>Enable Client Interface</strong>
+                </label>
+            </div>
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-success w-100" type="submit">
+            <i class="bi bi-power"></i>&nbsp;
+            Apply Status
+          </button>
+        </div>
+      </form>
+    </div>
+</div>
+
+<!-- Network Configuration -->
+<div class="card" style="width:80%;">
+    <div class="card-body">
+      <h5 class="card-title">Network Configuration</h5>
+        <form action="/settings/client" method="post" class="row g-3">
+            <input type="hidden" name="form_type" value="network_settings">
+            <table class="table table-borderless table-striped">
+                <tr>
+                    <td>
+                        <b>Source IP / Hostname</b><br>
+                        <i>External IP address or hostname used for URL creation in file delivery.</i>
+                    </td>
+                    <td style="vertical-align: middle;">
+                        <input type="text" name="source_ip" class="form-control" value="{{ config['source_ip'] }}" required>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>Client Port</b><br>
+                        <i>External port for file delivery URLs (default: 443).</i>
+                        <p style="margin:5px 0 0 0;color:#0d6efd;font-size:12px;">
+                            <i class="bi bi-info-circle"></i> Changing the port will restart the client interface.
+                        </p>
+                    </td>
+                    <td style="vertical-align: middle;">
+                        <input type="number" name="client_port" class="form-control" value="{{ config.get('client_port', 443) }}" required>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>Redirect URL</b><br>
+                        <i>Redirect destination for access control violations.</i>
+                        <p style="margin:10px 0 0 0;color:#856404;">
+                            <i class="bi bi-exclamation-triangle"></i> Do not use Dispatch IP to avoid redirect loops.
+                        </p>
+                    </td>
+                    <td style="vertical-align: middle;">
+                        <input type="text" name="redirect_url" class="form-control" value="{{ config['redirect_url'] }}" required>
+                    </td>
+                </tr>
+            </table>
+
+            <div class="col-md-3">
+              <button class="btn btn-success w-100" type="submit">
+                <i class="bi bi-globe"></i>&nbsp;
+                Save Network Settings
+              </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- HTTP Response Headers -->
+<div class="card" style="width:80%;">
+    <div class="card-body">
+      <h5 class="card-title">HTTP Response Headers</h5>
+      <p><i>Custom headers appended to all client file delivery responses. Use this to modify Server header or add custom headers.</i></p>
+        <form action="/settings/client" method="post" class="row g-3">
+            <input type="hidden" name="form_type" value="response_headers">
+
+            <div class="col-md-12">
+                <div id="headersContainer">
+                    {% for header_name, header_value in response_headers.items() %}
+                    <div class="header-row">
+                        <input type="text" name="header_name[]" class="form-control" placeholder="Header Name (e.g., Server)" value="{{ header_name }}">
+                        <input type="text" name="header_value[]" class="form-control" placeholder="Header Value (e.g., Apache)" value="{{ header_value }}">
+                        <button type="button" class="remove-btn" onclick="removeHeaderRow(this)"><i class="bi bi-trash"></i></button>
+                    </div>
+                    {% endfor %}
+                    {% if not response_headers %}
+                    <div class="header-row">
+                        <input type="text" name="header_name[]" class="form-control" placeholder="Header Name (e.g., Server)" value="Server">
+                        <input type="text" name="header_value[]" class="form-control" placeholder="Header Value (e.g., Apache)" value="{{ config.get('server_header', 'Apache') }}">
+                        <button type="button" class="remove-btn" onclick="removeHeaderRow(this)"><i class="bi bi-trash"></i></button>
+                    </div>
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-secondary add-header-btn" onclick="addHeaderRow()">
+                    <i class="bi bi-plus-circle"></i> Add Header
+                </button>
+            </div>
+
+            <div class="col-md-3">
+              <button class="btn btn-success w-100" type="submit">
+                <i class="bi bi-code-slash"></i>&nbsp;
+                Save Headers
+              </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Access Control -->
+<div class="card" style="width:80%;">
+  <div class="card-body">
+    <form action="/settings/client" method="post" enctype="multipart/form-data">
+      <h5 class="card-title">Access Control</h5>
+      <input type="hidden" name="form_type" value="access_control">
+      <div class="row gy-4">
+        <div class="col-md-12">
+            <i>Access restrictions prevent unauthorized downloads. Authenticated requests must also meet these restrictions.
+            Leave empty to accept all requests.</i>
+        </div>
+
+        <div class="col-md-12">
+            <div style="padding-bottom:8px;">
+                <b>IP Address Allow List</b><br>
+                <i>Only accept file requests from these source addresses:</i>
+            </div>
+            <textarea class="form-control" name="allow_ip" rows="5" placeholder="One IP, domain, or CIDR per line">{{ '\n'.join(config['allow_ip']) }}</textarea>
+        </div>
+
+        <div class="col-md-12">
+            <div style="padding-bottom:8px;">
+                <b>User-Agent Allow List</b><br>
+                <i>Only accept file requests with these User-Agent values:</i>
+            </div>
+            <textarea class="form-control" name="allow_ua" rows="5" placeholder="(One User-Agent per line)">{{ '\n'.join(config['allow_ua']) }}</textarea>
+        </div>
+
+        <div class="col-md-12">
+            <div style="padding-bottom:8px;">
+                <b>Parameter Key Rotation</b><br>
+                <i>Require a rotating URL parameter for file access. The key is shown in the user dropdown and resets after each use.</i>
+            </div>
+            <select name="param_rotation" class="form-control" style="max-width:200px;" required>
+              <option value="0" {{ 'selected' if config['param_rotation'] == 0 }}>Disabled</option>
+              <option value="1" {{ 'selected' if config['param_rotation'] == 1 }}>Enabled</option>
+            </select>
+        </div>
+
+        <div class="col-md-3">
+          <button class="btn btn-success w-100" type="submit">
+            <i class="bi bi-shield-lock"></i>&nbsp;
+            Save Access Control
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+{{ status_msg }}
+<script>
+function addHeaderRow() {
+    const container = document.getElementById('headersContainer');
+    const row = document.createElement('div');
+    row.className = 'header-row';
+    row.innerHTML = `
+        <input type="text" name="header_name[]" class="form-control" placeholder="Header Name (e.g., X-Custom-Header)">
+        <input type="text" name="header_value[]" class="form-control" placeholder="Header Value">
+        <button type="button" class="remove-btn" onclick="removeHeaderRow(this)"><i class="bi bi-trash"></i></button>
+    `;
+    container.appendChild(row);
+}
+
+function removeHeaderRow(btn) {
+    const container = document.getElementById('headersContainer');
+    if (container.children.length > 1) {
+        btn.parentElement.remove();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,273 @@
+{% extends "master.html" %}
+
+{% block title %}MFA Setup{% endblock %}
+
+{% block html_head %}
+<style>
+    button:hover {
+        border-color: #4bd11e;
+        background-color: #4bd11e !important;
+    }
+
+    .qr-container {
+        text-align: center;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        margin: 20px 0;
+    }
+
+    .qr-container img {
+        max-width: 200px;
+        border: 4px solid #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .secret-key {
+        font-family: monospace;
+        font-size: 16px;
+        letter-spacing: 2px;
+        background: #1c1c1c;
+        color: #42B41C;
+        padding: 10px 15px;
+        border-radius: 4px;
+        word-break: break-all;
+    }
+
+    .totp-input {
+        font-size: 24px;
+        letter-spacing: 8px;
+        text-align: center;
+        font-family: monospace;
+        max-width: 200px;
+    }
+
+    .mfa-status {
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .mfa-enabled {
+        background: rgba(66, 180, 28, 0.1);
+        border: 1px solid #42B41C;
+    }
+
+    .mfa-disabled {
+        background: rgba(220, 53, 69, 0.1);
+        border: 1px solid #dc3545;
+    }
+
+    .setup-step {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border-left: 4px solid #42B41C;
+    }
+
+    .setup-step h6 {
+        margin-bottom: 10px;
+        color: #42B41C;
+    }
+
+    .btn-danger:hover {
+        border-color: #dc3545 !important;
+        background-color: #dc3545 !important;
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+    <h1>Two-Factor Authentication</h1>
+    <nav>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Home</a></li>
+            <li class="breadcrumb-item"><a href="/users">Users</a></li>
+            <li class="breadcrumb-item active">MFA Setup</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">
+            <i class="bi bi-shield-lock"></i>&nbsp;
+            MFA Settings for {{ user.username }}
+        </h5>
+
+        {% if not mfa_available %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i>&nbsp;
+            <strong>MFA Not Available:</strong> The required packages (pyotp and qrcode) are not installed.
+            <br><br>
+            Install them with: <code>pip install pyotp qrcode[pil]</code>
+        </div>
+        {% else %}
+
+        <!-- Current MFA Status -->
+        <div class="mfa-status {% if mfa_status.mfa_enabled %}mfa-enabled{% else %}mfa-disabled{% endif %}">
+            <strong>
+                <i class="bi {% if mfa_status.mfa_enabled %}bi-shield-check{% else %}bi-shield-x{% endif %}"></i>&nbsp;
+                Status:
+            </strong>
+            {% if mfa_status.mfa_enabled %}
+            <span style="color: #42B41C;">MFA Enabled</span>
+            {% else %}
+            <span style="color: #dc3545;">MFA Disabled</span>
+            {% endif %}
+        </div>
+
+        {% if mfa_status.mfa_enabled %}
+        <!-- MFA is enabled - show disable option -->
+        <div class="row">
+            <div class="col-md-8">
+                <p>Two-factor authentication is currently enabled for this account. Every login will require a verification code from your authenticator app.</p>
+                <button type="button" class="btn btn-danger" onclick="disableMFA()">
+                    <i class="bi bi-shield-x"></i>&nbsp;Disable MFA
+                </button>
+            </div>
+        </div>
+        {% else %}
+        <!-- MFA is disabled - show setup flow -->
+        <div id="setup-container">
+            <div class="setup-step">
+                <h6><i class="bi bi-1-circle"></i> Generate QR Code</h6>
+                <p>Click the button below to generate a new QR code for your authenticator app.</p>
+                <button type="button" class="btn btn-success" onclick="generateQR()" id="generate-btn">
+                    <i class="bi bi-qr-code"></i>&nbsp;Generate QR Code
+                </button>
+            </div>
+
+            <div id="qr-step" style="display: none;">
+                <div class="setup-step">
+                    <h6><i class="bi bi-2-circle"></i> Scan QR Code</h6>
+                    <p>Open your authenticator app (Google Authenticator, Authy, etc.) and scan this QR code:</p>
+                    <div class="qr-container">
+                        <img id="qr-image" src="" alt="MFA QR Code">
+                    </div>
+                    <p><strong>Manual Entry Key:</strong></p>
+                    <div class="secret-key" id="secret-key"></div>
+                    <small class="text-muted d-block mt-2">Save this key securely. You'll need it to recover your account.</small>
+                </div>
+
+                <div class="setup-step">
+                    <h6><i class="bi bi-3-circle"></i> Verify Code</h6>
+                    <p>Enter the 6-digit code from your authenticator app to complete setup:</p>
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <input type="text" class="form-control totp-input" id="verify-code"
+                                   maxlength="6" pattern="[0-9]{6}" inputmode="numeric"
+                                   placeholder="000000">
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-success" onclick="verifyMFA()">
+                                <i class="bi bi-check-circle"></i>&nbsp;Verify & Enable
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+{{ status_msg }}
+<script>
+    const userId = {{ user.id }};
+
+    function generateQR() {
+        const btn = document.getElementById('generate-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i>&nbsp;Generating...';
+
+        fetch('/api/mfa/setup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: userId})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, false);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-qr-code"></i>&nbsp;Generate QR Code';
+            } else {
+                document.getElementById('qr-image').src = data.qr_code;
+                document.getElementById('secret-key').textContent = data.secret;
+                document.getElementById('qr-step').style.display = 'block';
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>&nbsp;Regenerate QR Code';
+                btn.disabled = false;
+            }
+        })
+        .catch(err => {
+            showNotification('Failed to generate QR code', false);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-qr-code"></i>&nbsp;Generate QR Code';
+        });
+    }
+
+    function verifyMFA() {
+        const code = document.getElementById('verify-code').value.trim();
+        if (code.length !== 6) {
+            showNotification('Please enter a 6-digit code', false);
+            return;
+        }
+
+        fetch('/api/mfa/verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: userId, code: code})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, false);
+            } else {
+                showNotification('MFA enabled successfully!', true);
+                setTimeout(() => location.reload(), 1500);
+            }
+        })
+        .catch(err => {
+            showNotification('Failed to verify code', false);
+        });
+    }
+
+    function disableMFA() {
+        if (!confirm('Are you sure you want to disable MFA? This will remove the extra security layer from this account.')) {
+            return;
+        }
+
+        fetch('/api/mfa/disable', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: userId})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, false);
+            } else {
+                showNotification('MFA disabled', true);
+                setTimeout(() => location.reload(), 1500);
+            }
+        })
+        .catch(err => {
+            showNotification('Failed to disable MFA', false);
+        });
+    }
+
+    // Auto-format TOTP input
+    document.getElementById('verify-code')?.addEventListener('input', function(e) {
+        this.value = this.value.replace(/[^0-9]/g, '');
+    });
+</script>
+{% endblock %}

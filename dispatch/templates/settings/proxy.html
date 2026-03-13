@@ -1,0 +1,169 @@
+{% extends "master.html" %}
+
+{% block title %}
+Reverse Proxy
+{% endblock %}
+
+{% block html_head %}
+<style>
+    .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    .status-enabled {
+        background: #28a745;
+    }
+    .status-disabled {
+        background: #dc3545;
+    }
+    .alert-warning-custom {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .alert-warning-custom i {
+        color: #856404;
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Reverse proxy</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="/settings">Settings</a></li>
+      <li class="breadcrumb-item active">Proxy</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<!-- Client Interface Warning -->
+{% if not config.get('client_enabled', True) %}
+<div class="alert-warning-custom" style="width:80%;">
+    <i class="bi bi-exclamation-triangle-fill"></i>&nbsp;
+    <strong>Warning:</strong> The Client Interface is currently disabled. Reverse proxy routes will not work until the Client Interface is enabled in <a href="/settings/client">Client Interface Settings</a>.
+</div>
+{% endif %}
+
+<!-- Reverse Proxy Status -->
+<div class="card" style="width:80%;">
+    <div class="card-body">
+      <h5 class="card-title">
+        <span class="status-indicator {{ 'status-enabled' if config.get('proxy_enabled', False) else 'status-disabled' }}"></span>
+        Reverse Proxy Status
+      </h5>
+      <form action="/settings/proxy" method="post" class="row g-3">
+        <input type="hidden" name="form_type" value="proxy_status">
+        <div class="col-md-12">
+            <p>Enable or disable the reverse proxy feature. When disabled, proxy routes will not be processed.</p>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="proxy_enabled" id="proxyEnabled" {{ 'checked' if config.get('proxy_enabled', False) }}>
+                <label class="form-check-label" for="proxyEnabled">
+                    <strong>Enable Reverse Proxy</strong>
+                </label>
+            </div>
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-success w-100" type="submit">
+            <i class="bi bi-power"></i>&nbsp;
+            Apply Status
+          </button>
+        </div>
+      </form>
+    </div>
+</div>
+
+<!-- Proxy Configuration -->
+<div class="card" style="width:80%;">
+  <div class="card-body">
+    <h5 class="card-title">
+        Configuration
+    </h5>
+      <div class="row gy-4">
+        <div class="col-md-12">
+            Ensure proxy routes do not conflict with existing Dispatch files, which will take precedence over the proxy.
+        </div>
+
+        <div class="col-md-12">
+            Remove routes by clicking the "✖" button next to each row.
+        </div>
+
+        <div class="col-md-12">
+            <form action="/settings/proxy" method="post" id="routeForm">
+                <table class="table table-bordered" id="routesTable">
+                    <thead>
+                        <tr>
+                            <th>Path</th>
+                            <th>Redirect URL</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dynamically Load Stored Routes -->
+                        {% for path, redirect_url in routes.items() if path not in ['/', '*'] %}
+                        <tr>
+                            <td><input type="text" name="path[]" class="form-control" required value="{{ path }}"></td>
+                            <td><input type="url" name="redirect[]" class="form-control" required value="{{ redirect_url }}"></td>
+                            <td><button type="button" class="btn btn-danger removeRow">✖</button></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button style="background-color:#333;border-color:#333;" class="btn btn-primary" type="button" id="addRow">
+                    + Add Row
+                </button>
+                <button style="background-color:#42B41C;border-color:#42B41C;" class="btn btn-primary"type="submit">
+                    <i class="bi bi-shield-lock"></i>&nbsp;
+                    Save Routes
+                </button>
+            </form>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+{{ status_msg }}
+<script>
+    $(document).ready(function () {
+        $("#addRow").click(function () {
+            $("#routesTable tbody").append(`
+                <tr>
+                    <td><input type="text" name="path[]" class="form-control path-input" required placeholder="/example-path"></td>
+                    <td><input type="url" name="redirect[]" class="form-control" required placeholder="Enter redirect URL"></td>
+                    <td><button type="button" class="btn btn-danger removeRow">✖</button></td>
+                </tr>
+            `);
+        });
+
+        // Remove a row when clicking "✖"
+        $(document).on("click", ".removeRow", function () {
+            $(this).closest("tr").remove();
+        });
+
+        // Prevent duplicate paths
+        $(document).on("input", ".path-input", function () {
+            let inputVal = $(this).val().trim();
+            let exists = $(".path-input").not(this).filter(function () {
+                return $(this).val().trim() === inputVal;
+            }).length > 0;
+
+            if (exists) {
+                alert("This path is already added!");
+                $(this).val(""); // Reset field
+            }
+        });
+    });
+</script>
+{% endblock %}

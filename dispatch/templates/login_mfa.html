@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Dispatch | Verify MFA</title>
+  <link href="/static/img/favicon/favicon.ico" rel="icon">
+  <link href="/static/img/favicon/apple-touch-icon.png" rel="apple-touch-icon">
+  <link href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,600,600i,700,700i|Nunito:300,300i,400,400i,600,600i,700,700i|Poppins:300,300i,400,400i,500,500i,600,600i,700,700i" rel="stylesheet">
+  <link href="/static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <link href="/static/css/style.css" rel="stylesheet">
+
+  <style>
+    a {
+      color: #42B41C;
+      text-decoration: none;
+    }
+
+    a:hover {
+      color: #4bd11e;
+      text-decoration: none;
+    }
+
+    .totp-input {
+      font-size: 24px;
+      letter-spacing: 8px;
+      text-align: center;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container">
+      <section class="section register min-vh-100 d-flex flex-column align-items-center justify-content-center py-4">
+        <div class="container">
+          <div class="row justify-content-center">
+            <div class="col-lg-4 col-md-6 d-flex flex-column align-items-center justify-content-center">
+
+              <div class="d-flex justify-content-center py-4">
+                <a href="/" class="logo d-flex align-items-center w-auto">
+                </a>
+              </div>
+
+              <div class="card mb-3">
+                <div class="card-body">
+                  <div class="pt-4 pb-2">
+                    <h5 class="card-title text-center pb-0 fs-4">
+                      <i style="font-size:22px;color:#4bd11e;" class="bi bi-shield-lock"></i>
+                      &nbsp;Two-Factor Authentication
+                    </h5>
+                    <p class="text-center small">Enter the code from your authenticator app:</p>
+                  </div>
+
+                  <form class="row g-3 needs-validation" action="/login" method="post" novalidate>
+                    {{ login_status }}
+                    <input type="hidden" name="mfa_token" value="{{ mfa_token }}">
+
+                    <div class="col-12">
+                      <label for="totp_code" class="form-label">Verification Code</label>
+                      <input type="text" name="totp_code" class="form-control totp-input" id="totp_code"
+                             maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"
+                             placeholder="000000" required autofocus>
+                      <div class="invalid-feedback">Please enter your 6-digit code.</div>
+                    </div>
+
+                    <div class="col-12">
+                      <button style="background-color:#42B41C;border-color:#42B41C;" class="btn btn-primary w-100" type="submit">
+                        <i class="bi bi-check-circle"></i>&nbsp;Verify
+                      </button>
+                    </div>
+
+                    <div class="col-12 text-center">
+                      <a href="/login" class="small">Cancel and return to login</a>
+                    </div>
+                  </form>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="/static/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Auto-submit when 6 digits are entered
+    document.getElementById('totp_code').addEventListener('input', function(e) {
+      this.value = this.value.replace(/[^0-9]/g, '');
+      if (this.value.length === 6) {
+        this.form.submit();
+      }
+    });
+  </script>
+</body>
+</html>
