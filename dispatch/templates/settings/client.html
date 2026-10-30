@@ -240,7 +240,7 @@ Client Interface
 {% endblock %}
 
 {% block html_footer %}
-{{ status_msg }}
+{% include "_notice.html" %}
 <script>
 function addHeaderRow() {
     const container = document.getElementById('headersContainer');

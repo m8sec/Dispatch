@@ -1,0 +1,264 @@
+/* Dispatch theme. Loaded after the admin template so the shell, forms, and
+   login pages share one lightweight look. Dark mode follows the OS unless
+   the header toggle stores an explicit choice. */
+
+:root {
+  --dispatch-bg: #eef2f6;
+  --dispatch-surface: #ffffff;
+  --dispatch-surface-2: #f7f9fb;
+  --dispatch-text: #1b2430;
+  --dispatch-muted: #5d6b7c;
+  --dispatch-border: #e3e8ee;
+  --dispatch-accent: #2f9e44;
+  --dispatch-accent-2: #3cb54d;
+  --dispatch-shadow: 0 10px 30px rgba(22, 34, 51, 0.06);
+  --dispatch-radius: 14px;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --dispatch-bg: #10151c;
+  --dispatch-surface: #18212c;
+  --dispatch-surface-2: #202b38;
+  --dispatch-text: #e7eef6;
+  --dispatch-muted: #a9b6c6;
+  --dispatch-border: #2c3948;
+  --dispatch-accent: #4bd11e;
+  --dispatch-accent-2: #6ee04a;
+  --dispatch-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    --dispatch-bg: #10151c;
+    --dispatch-surface: #18212c;
+    --dispatch-surface-2: #202b38;
+    --dispatch-text: #e7eef6;
+    --dispatch-muted: #a9b6c6;
+    --dispatch-border: #2c3948;
+    --dispatch-accent: #4bd11e;
+    --dispatch-accent-2: #6ee04a;
+    --dispatch-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    color-scheme: dark;
+  }
+}
+
+html, body {
+  background: var(--dispatch-bg);
+  color: var(--dispatch-text);
+}
+
+body {
+  zoom: 1;
+  font-family: "Nunito", "Segoe UI", sans-serif;
+  letter-spacing: 0.01em;
+}
+
+#main {
+  background: transparent;
+}
+
+.header,
+.sidebar,
+.card,
+.modal-content,
+.dropdown-menu,
+.footer,
+.activity-viewer,
+.log-viewer {
+  background: var(--dispatch-surface) !important;
+  color: var(--dispatch-text);
+  border-color: var(--dispatch-border);
+}
+
+.header,
+.sidebar {
+  border-bottom: 1px solid var(--dispatch-border);
+  box-shadow: none;
+}
+
+.sidebar {
+  border-right: 1px solid var(--dispatch-border);
+  border-bottom: 0;
+}
+
+.card,
+.activity-viewer,
+.log-viewer,
+.modal-content {
+  border: 1px solid var(--dispatch-border);
+  border-radius: var(--dispatch-radius);
+  box-shadow: var(--dispatch-shadow);
+}
+
+.card-body,
+.card-title,
+.pagetitle h1,
+.dropdown-item,
+.sidebar-nav .nav-link,
+.header-nav .nav-profile {
+  color: var(--dispatch-text);
+}
+
+.pagetitle {
+  margin-bottom: 18px;
+}
+
+.pagetitle h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-nav .nav-link,
+.sidebar-nav .nav-link.collapsed {
+  border-radius: 10px;
+  margin: 2px 12px;
+  padding: 10px 12px;
+}
+
+html[data-theme="dark"] #sidebar,
+html[data-theme="dark"] #header,
+html[data-theme="dark"] #footer {
+  background: #18212c !important;
+  background-color: #18212c !important;
+  color: #e7eef6 !important;
+}
+
+html[data-theme="dark"] #footer {
+  background: #10151c !important;
+  background-color: #10151c !important;
+}
+
+html[data-theme="dark"] #sidebar .nav-link,
+html[data-theme="dark"] #sidebar .nav-link.collapsed {
+  background: #202b38 !important;
+  background-color: #202b38 !important;
+  color: #e7eef6 !important;
+}
+
+html[data-theme="dark"] #sidebar .nav-link i,
+html[data-theme="dark"] #sidebar .nav-link.collapsed i {
+  background: transparent !important;
+  color: #a9b6c6 !important;
+}
+
+.sidebar-nav .nav-link:hover,
+.sidebar-nav .nav-link.active,
+.sidebar-nav .nav-content a:hover {
+  background: color-mix(in srgb, var(--dispatch-accent) 14%, transparent);
+}
+
+.form-control,
+.form-select,
+.access_perms {
+  background: var(--dispatch-surface-2);
+  color: var(--dispatch-text);
+  border: 1px solid var(--dispatch-border);
+  border-radius: 10px;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--dispatch-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dispatch-accent) 25%, transparent);
+}
+
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--dispatch-text);
+  --bs-table-border-color: var(--dispatch-border);
+  --bs-table-striped-bg: color-mix(in srgb, var(--dispatch-accent) 6%, transparent);
+  --bs-table-hover-bg: color-mix(in srgb, var(--dispatch-accent) 10%, transparent);
+  color: var(--dispatch-text);
+}
+
+.table thead th {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dispatch-muted);
+  border-bottom-color: var(--dispatch-border);
+}
+
+.btn {
+  border-radius: 10px;
+  font-weight: 650;
+}
+
+#notification {
+  border-radius: 12px;
+  border: 0;
+  box-shadow: var(--dispatch-shadow);
+}
+
+.breadcrumb,
+.activity-toolbar,
+.log-toolbar {
+  background: var(--dispatch-surface-2) !important;
+}
+
+.stat-card,
+.split-card {
+  background: var(--dispatch-surface-2) !important;
+  color: var(--dispatch-text);
+  border: 1px solid var(--dispatch-border);
+  border-left-width: 4px;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  background:
+    radial-gradient(900px 420px at 10% -10%, color-mix(in srgb, var(--dispatch-accent) 28%, transparent), transparent 60%),
+    var(--dispatch-bg);
+}
+
+.login-shell .card {
+  width: min(440px, 100%);
+  border-radius: 18px;
+}
+
+.theme-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--dispatch-text);
+  font-size: 20px;
+  padding: 6px 10px;
+}
+
+@media (max-width: 1199px) {
+  .sidebar {
+    left: -300px !important;
+  }
+
+  .toggle-sidebar .sidebar {
+    left: 0 !important;
+  }
+
+  #main,
+  #footer {
+    margin-left: 0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  #main {
+    padding: 16px 12px;
+  }
+
+  .activity-stats,
+  .activity-splits,
+  .log-stats {
+    flex-direction: column;
+  }
+
+  .card-body,
+  .activity-viewer,
+  .log-viewer {
+    padding: 16px;
+  }
+}

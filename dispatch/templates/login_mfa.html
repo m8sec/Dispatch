@@ -11,6 +11,17 @@
   <link href="/static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
   <link href="/static/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
   <link href="/static/css/style.css" rel="stylesheet">
+  <link href="/static/css/dispatch-theme.css?v=2" rel="stylesheet">
+  <script>
+    (function () {
+      var stored = localStorage.getItem('dispatch-theme');
+      var theme = stored === 'light' || stored === 'dark'
+        ? stored
+        : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-bs-theme', theme);
+    })();
+  </script>
 
   <style>
     a {
@@ -32,7 +43,7 @@
   </style>
 </head>
 <body>
-  <main>
+  <main class="login-shell">
     <div class="container">
       <section class="section register min-vh-100 d-flex flex-column align-items-center justify-content-center py-4">
         <div class="container">
@@ -55,7 +66,9 @@
                   </div>
 
                   <form class="row g-3 needs-validation" action="/login" method="post" novalidate>
-                    {{ login_status }}
+                    {% if login_error %}
+                    <div style="color:red;">{{ login_error }}</div>
+                    {% endif %}
                     <input type="hidden" name="mfa_token" value="{{ mfa_token }}">
 
                     <div class="col-12">

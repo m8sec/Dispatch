@@ -1,0 +1,6 @@
+{% if form_error %}
+<div style="color:red;margin-bottom:8px;">{{ form_error }}</div>
+{% endif %}
+{% if status_msg and status_msg.message is defined %}
+<script>showNotification({{ status_msg.message|tojson }}, {{ status_msg.success|tojson }});</script>
+{% endif %}

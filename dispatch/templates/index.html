@@ -102,7 +102,7 @@ Files
             <button class="btn btn-success" onclick="showCreateFolderModal()">
                 <i class="bi bi-folder-plus"></i> New Folder
             </button>
-            <a href="/file/upload" class="btn btn-success">
+            <a href="/file/upload" id="uploadFileBtn" class="btn btn-success">
                 <i class="bi bi-cloud-arrow-up"></i> Upload
             </a>
             <div id="bulkActions" class="d-flex gap-2">
@@ -266,7 +266,8 @@ Files
         }
         ReMapFiles();
         ListFiles();
+        startListingPoll();
     });
   </script>
-  {{ status_msg }}
+  {% include "_notice.html" %}
 {% endblock %}

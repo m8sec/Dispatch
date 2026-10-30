@@ -14,6 +14,47 @@ function showNotification(message, isSuccess = true) {
     }, 3000);
 }
 
+function downloadBudget(file) {
+    var used = parseInt(file.download_count || 0, 10) || 0;
+    if (file.max_downloads === null || file.max_downloads === undefined || file.max_downloads === '') {
+        return used ? (used + (used === 1 ? ' download' : ' downloads')) : '';
+    }
+    var max = parseInt(file.max_downloads, 10);
+    var left = Math.max(max - used, 0);
+    if (left <= 0) {
+        return 'Exhausted (' + used + '/' + max + ')';
+    }
+    return left + ' of ' + max + ' remaining';
+}
+
+function htmlEscape(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function openFolderFromElement(el) {
+    var rawId = el.getAttribute('data-folder-id');
+    var name = el.getAttribute('data-folder-name') || '';
+    navigateToFolder(rawId ? parseInt(rawId, 10) : null, name);
+    return false;
+}
+
+function updateUploadLinks() {
+    var href = currentFolderId ? ('/file/upload?folder=' + encodeURIComponent(currentFolderId)) : '/file/upload';
+    var button = document.getElementById('uploadFileBtn');
+    if (button) {
+        button.href = href;
+    }
+    var sidebar = document.getElementById('sidebarUploadLink');
+    if (sidebar) {
+        sidebar.href = href;
+    }
+}
+
 // Global variables for folder management
 var folderData = [];
 var allFiles = [];
@@ -70,7 +111,7 @@ function refreshParamKey(callback) {
         success: function (response) {
             if (response && typeof response['key'] !== 'undefined') {
                 currentParamKey = response['key'] || '';
-                document.getElementById('ParamKey').innerHTML = currentParamKey;
+                document.getElementById('ParamKey').textContent = currentParamKey;
             }
             if ($.fn.dataTable.isDataTable('#file_listing')) {
                 var table = $('#file_listing').DataTable();
@@ -113,15 +154,18 @@ function updateBreadcrumb() {
     html += '<li class="breadcrumb-item"><a href="#" onclick="navigateToFolder(null, \'\'); return false;" style="color:#42B41C;"><i class="bi bi-house-door"></i> Root</a></li>';
 
     folderPath.forEach(function(folder, index) {
+        var folderId = parseInt(folder.id, 10);
+        var safeName = htmlEscape(folder.name);
         if (index === folderPath.length - 1) {
-            html += '<li class="breadcrumb-item active" aria-current="page">' + folder.name + '</li>';
+            html += '<li class="breadcrumb-item active" aria-current="page">' + safeName + '</li>';
         } else {
-            html += '<li class="breadcrumb-item"><a href="#" onclick="navigateToFolder(' + folder.id + ', \'' + folder.name.replace(/'/g, "\\'") + '\'); return false;" style="color:#42B41C;">' + folder.name + '</a></li>';
+            html += '<li class="breadcrumb-item"><a href="#" data-folder-id="' + folderId + '" data-folder-name="' + safeName + '" onclick="return openFolderFromElement(this);" style="color:#42B41C;">' + safeName + '</a></li>';
         }
     });
 
     html += '</ol></nav>';
     breadcrumb.innerHTML = html;
+    updateUploadLinks();
 }
 
 function renderFilesAndFolders(files, folders) {
@@ -163,7 +207,7 @@ function renderFilesAndFolders(files, folders) {
                     if (o.isFolder) {
                         return '';  // No checkbox for folders
                     } else {
-                        return '<input type="checkbox" class="file-checkbox" data-file-id="' + o['id'] + '" onchange="updateBulkActions()">';
+                        return '<input type="checkbox" class="file-checkbox" data-file-id="' + htmlEscape(o['id']) + '" onchange="updateBulkActions()">';
                     }
                 }
             },
@@ -171,13 +215,19 @@ function renderFilesAndFolders(files, folders) {
                 "mData": null,
                 "mRender": function (o) {
                     if (o.isFolder) {
-                        return '<a href="#" onclick="navigateToFolder(' + o.id + ', \'' + o.folder_name.replace(/'/g, "\\'") + '\'); return false;" style="font-weight:600;text-decoration:none;color:inherit;" title="Click to open folder">' +
+                        var folderId = parseInt(o.id, 10);
+                        var safeFolder = htmlEscape(o.folder_name);
+                        return '<a href="#" data-folder-id="' + folderId + '" data-folder-name="' + safeFolder + '" onclick="return openFolderFromElement(this);" style="font-weight:600;text-decoration:none;color:inherit;" title="Click to open folder">' +
                             '<i class="bi bi-folder-fill folder-icon" style="color:#42B41C;cursor:pointer;"></i>' +
-                            '<span style="cursor:pointer;">' + o.folder_name + '</span>' +
+                            '<span style="cursor:pointer;">' + safeFolder + '</span>' +
                             '</a>';
                     } else {
-                        var html = '<a href="/file/edit?id=' + o['id'] + '" title="Click to Edit">';
-                        html += o['filename'];
+                        var html = '<a href="/file/edit?id=' + encodeURIComponent(o['id']) + '" title="Click to Edit">';
+                        html += htmlEscape(o['filename']);
+                        var budget = downloadBudget(o);
+                        if (budget) {
+                            html += '<div style="font-size:12px;color:grey;">' + htmlEscape(budget) + '</div>';
+                        }
                         html += " " + `${o['encrypt'] ? "🔒" : ""}`;
                         html += `${o['access'] == 1 ? "🌐" : ""}`;
                         html += '</a>';
@@ -191,7 +241,7 @@ function renderFilesAndFolders(files, folders) {
                     if (o.isFolder) {
                         return '-';
                     }
-                    return '<span style="color:grey;">' + (o['file_size'] || '-') + '</span>';
+                    return '<span style="color:grey;">' + htmlEscape(o['file_size'] || '-') + '</span>';
                 }
             },
             {
@@ -207,11 +257,11 @@ function renderFilesAndFolders(files, folders) {
                     // Use client_port for file delivery URLs (default to 443)
                     var clientPort = o['client_port'] || 443;
                     var portStr = (clientPort == 443) ? '' : ':' + clientPort;
-                    var url = location.protocol + "//" + o['ip'] + portStr + "/" + o['alias'] + key;
+                    var url = location.protocol + "//" + (o['ip'] || '') + portStr + "/" + (o['alias'] || '') + key;
 
-                    var html = o['alias'];
+                    var html = htmlEscape(o['alias']);
                     html += '<span style="float:right;">';
-                    html += '<a href="' + url + '" onclick="copyURI(event, this)">';
+                    html += '<a href="' + htmlEscape(url) + '" onclick="copyURI(event, this)">';
                     html += '<i class="bi bi-clipboard" title="Click to copy"></i>';
                     html += '</a>';
                     html += '</span>';
@@ -223,9 +273,9 @@ function renderFilesAndFolders(files, folders) {
                 "mData": null,
                 "mRender": function (o) {
                     if (o.isFolder) {
-                        return o['created_date'] || '-';
+                        return htmlEscape(o['created_date'] || '-');
                     }
-                    return o['upload_date'];
+                    return htmlEscape(o['upload_date']);
                 }
             },
             {
@@ -233,9 +283,9 @@ function renderFilesAndFolders(files, folders) {
                 "mData": null,
                 "mRender": function (o) {
                     if (o.isFolder) {
-                        return o['created_by'] || '-';
+                        return htmlEscape(o['created_by'] || '-');
                     }
-                    return o['uploaded_by'];
+                    return htmlEscape(o['uploaded_by']);
                 }
             },
             {
@@ -243,8 +293,8 @@ function renderFilesAndFolders(files, folders) {
                 "mData": null,
                 "mRender": function (o) {
                     var onchangeHandler = o.isFolder ?
-                        'updateFolderAccess(' + o['id'] + ', this)' :
-                        'updateAccess(' + o['id'] + ', this)';
+                        'updateFolderAccess(' + parseInt(o['id'], 10) + ', this)' :
+                        'updateAccess(\'' + htmlEscape(o['id']) + '\', this)';
 
                     var html = '<select class="access_perms form-control" onchange="' + onchangeHandler + '">';
                     if (o.isFolder) {
@@ -267,7 +317,7 @@ function renderFilesAndFolders(files, folders) {
 
                     if (o.isFolder) {
                         // Folder actions
-                        html += '<button type="button" class="btn btn-primary btn-sm" onclick="showRenameFolderModal(' + o['id'] + ', \'' + o.folder_name.replace(/'/g, "\\'") + '\')" title="Rename Folder">';
+                        html += '<button type="button" class="btn btn-primary btn-sm" data-folder-id="' + parseInt(o['id'], 10) + '" data-folder-name="' + htmlEscape(o.folder_name) + '" onclick="showRenameFolderModal(this.getAttribute(\'data-folder-id\'), this.getAttribute(\'data-folder-name\'))" title="Rename Folder">';
                         html += '<i class="bi bi-pencil"></i>';
                         html += '</button>';
 
@@ -276,9 +326,9 @@ function renderFilesAndFolders(files, folders) {
                         html += '</button>';
                     } else {
                         // File actions
-                        var adminUrl = '/file/get/' + o['id'];
+                        var adminUrl = '/file/get/' + encodeURIComponent(o['id']);
 
-                        html += '<a href="/file/edit?id=' + o['id'] + '">';
+                        html += '<a href="/file/edit?id=' + encodeURIComponent(o['id']) + '">';
                         html += '<button type="button" class="btn btn-primary btn-sm" title="Edit File">';
                         html += '<i class="bi bi-pencil-square"></i>';
                         html += '</button>';
@@ -296,11 +346,11 @@ function renderFilesAndFolders(files, folders) {
                         html += '</button>';
                         html += '</a>';
 
-                        html += '<button type="button" class="btn btn-warning btn-sm" onclick="showMoveFileModal(' + o['id'] + ', \'' + o['filename'].replace(/'/g, "\\'") + '\')" title="Move to Folder">';
+                        html += '<button type="button" class="btn btn-warning btn-sm" data-file-id="' + htmlEscape(o['id']) + '" data-file-name="' + htmlEscape(o['filename']) + '" onclick="showMoveFileModal(this.getAttribute(\'data-file-id\'), this.getAttribute(\'data-file-name\'))" title="Move to Folder">';
                         html += '<i class="bi bi-folder"></i>';
                         html += '</button>';
 
-                        html += '<a href="/file/delete?id=' + o['id'] + '">';
+                        html += '<a href="/file/delete?id=' + encodeURIComponent(o['id']) + '">';
                         html += '<button type="button" class="btn btn-danger btn-sm">';
                         html += '<i class="bi bi-trash" title="Delete"></i>';
                         html += '</button>';
@@ -318,9 +368,77 @@ function renderFilesAndFolders(files, folders) {
 
 // Drag and drop removed - using simple move functionality instead
 
+var listingRevision = null;
+var listingPoll = null;
+var listingRefresh = false;
+
+function captureListingState() {
+    var state = { scrollY: window.scrollY || 0, search: '', page: 0 };
+    if ($.fn.dataTable && $.fn.dataTable.isDataTable('#file_listing')) {
+        var table = $('#file_listing').DataTable();
+        state.search = table.search();
+        state.page = table.page();
+    }
+    return state;
+}
+
+function restoreListingState(state) {
+    if (!state || !$.fn.dataTable || !$.fn.dataTable.isDataTable('#file_listing')) {
+        return;
+    }
+    var table = $('#file_listing').DataTable();
+    if (state.search) {
+        table.search(state.search);
+    }
+    var info = table.page.info();
+    var page = Math.min(state.page || 0, Math.max((info.pages || 1) - 1, 0));
+    table.page(page).draw(false);
+    window.scrollTo(0, state.scrollY || 0);
+}
+
+function syncListingRevision() {
+    $.getJSON('/api/files/revision', function (data) {
+        if (data && data.revision) {
+            listingRevision = data.revision;
+        }
+    });
+}
+
+function startListingPoll() {
+    if (listingPoll || !document.getElementById('file_listing')) {
+        return;
+    }
+    syncListingRevision();
+    listingPoll = setInterval(function () {
+        if (listingRefresh || document.hidden) {
+            return;
+        }
+        $.getJSON('/api/files/revision', function (data) {
+            if (!data || !data.revision) {
+                return;
+            }
+            if (!listingRevision) {
+                listingRevision = data.revision;
+                return;
+            }
+            if (data.revision !== listingRevision) {
+                listingRevision = data.revision;
+                resetFileTable();
+            }
+        });
+    }, 4000);
+}
+
 function resetFileTable(){
-    $('#file_listing').DataTable().destroy();
-    // Reload files and folders, maintaining current folder
+    if (!$('#file_listing').length) {
+        return;
+    }
+    var state = captureListingState();
+    listingRefresh = true;
+    if ($.fn.dataTable && $.fn.dataTable.isDataTable('#file_listing')) {
+        $('#file_listing').DataTable().destroy();
+    }
+    // Reload files and folders, maintaining current folder, search, page, and scroll
     $.ajax({
         url: `/api/folders/list`,
         dataType: "json",
@@ -335,8 +453,17 @@ function resetFileTable(){
                     allFiles = files;
                     renderFilesAndFolders(files, folders);
                     updateBreadcrumb();
+                    restoreListingState(state);
+                    syncListingRevision();
+                    listingRefresh = false;
+                },
+                error: function () {
+                    listingRefresh = false;
                 }
             });
+        },
+        error: function () {
+            listingRefresh = false;
         }
     });
 }
@@ -443,7 +570,7 @@ function copyParamKey(evt, elm) {
     evt.stopPropagation();
     evt.preventDefault();
     refreshParamKey(function () {
-        var k = document.getElementById('ParamKey').innerHTML;
+        var k = document.getElementById('ParamKey').textContent;
         navigator.clipboard.writeText(k).then(() => {
           elm.innerHTML = '<i style="color:#333;" class="bi bi-clipboard-check"></i>';
           setTimeout(() => elm.innerHTML = '<i class="bi bi-clipboard"></i>', 1000);
@@ -501,14 +628,14 @@ function ListUsers() {
                         if (o['username'] == curr_user) {
                             return '';
                         }
-                        return '<input type="checkbox" class="user-checkbox" data-user-id="' + o['id'] + '" onchange="updateUserBulkActions()">';
+                        return '<input type="checkbox" class="user-checkbox" data-user-id="' + parseInt(o['id'], 10) + '" onchange="updateUserBulkActions()">';
                     }
                 },
                 {
                     "mData"    : null,
                     "mRender": function (o) {
                         var mfaIcon = getMfaStatusIcon(o['mfa_status'] || 'disabled');
-                        return mfaIcon + '&nbsp;&nbsp;<a href="/user/edit?id=' + o['id'] + '">' + o['username'] + '</a>';
+                        return mfaIcon + '&nbsp;&nbsp;<a href="/user/edit?id=' + parseInt(o['id'], 10) + '">' + htmlEscape(o['username']) + '</a>';
                     }
                 },
                 {"bSortable": true, "mData": "created" },
@@ -518,7 +645,7 @@ function ListUsers() {
                     "mRender": function (o) {
                         var html = '<select class="access_perms form-control" onchange="updateRole('+o['id']+', this)">';
                         if (o['username'] == curr_user){
-                            html += '<option value="'+o['role']+'" readonly="readonly">'+o['role_name']+'</option>';
+                            html += '<option value="'+parseInt(o['role'], 10)+'" readonly="readonly">'+htmlEscape(o['role_name'])+'</option>';
                         }
                         else {
                             html += '<option value="0"' + (o['role'] == 0 ? ' selected': '') + '>Disabled</option>';
@@ -537,14 +664,14 @@ function ListUsers() {
                     "mData"    : null,
                     "mRender": function (o) {
                         var html ='<div class="actions">';
-                        html += '<a href="/user/edit?id=' + o['id'] + '">';
+                        html += '<a href="/user/edit?id=' + parseInt(o['id'], 10) + '">';
                         html+= '<button type="button" class="btn btn-success btn-sm">';
                         html += '<i class="bi bi-person-fill-lock" title="User Settings"></i>';
                         html += '</button>';
                         html += '</a>';
 
                         if (o['username'] != curr_user) {
-                            html += '<a href="/user/delete?id=' + o['id'] + '">';
+                            html += '<a href="/user/delete?id=' + parseInt(o['id'], 10) + '">';
                             html+= '<button type="button" class="btn btn-success btn-sm">';
                             html += '<i class="bi bi-trash" title="Delete"></i>';
                             html += '</button>'
@@ -613,7 +740,7 @@ function GetFileNames() {
             $.each(data, function(x){
                 var opt = document.createElement('option');
                 opt.value = data[x]['alias'];
-                opt.innerHTML = data[x]['filename'] + '  (' + data[x]['alias'] + ')';
+                opt.textContent = data[x]['filename'] + '  (' + data[x]['alias'] + ')';
                 select.appendChild(opt);
             })
         }
@@ -792,7 +919,7 @@ function executeSingleFileMove() {
     var fileId = window.currentMoveFileId;
 
     var postData = JSON.stringify({
-        file_id: parseInt(fileId),
+        file_id: fileId,
         folder_id: folderId ? parseInt(folderId) : null
     });
 
@@ -844,7 +971,7 @@ function updateBulkActions() {
 function getSelectedFileIds() {
     var selected = [];
     document.querySelectorAll('.file-checkbox:checked').forEach(function(cb) {
-        selected.push(parseInt(cb.getAttribute('data-file-id')));
+        selected.push(cb.getAttribute('data-file-id'));
     });
     return selected;
 }

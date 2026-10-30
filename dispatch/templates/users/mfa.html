@@ -180,7 +180,7 @@
 {% endblock %}
 
 {% block html_footer %}
-{{ status_msg }}
+{% include "_notice.html" %}
 <script>
     const userId = {{ user.id }};
 

@@ -321,6 +321,15 @@ Script Runner
         $('#schedulePreview').text(text);
     }
 
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function loadScripts() {
         $.ajax({
             url: '/api/scripts/list',
@@ -332,22 +341,22 @@ Script Runner
                     html = '<p class="text-muted">No scripts yet. Create one!</p>';
                 } else {
                     scripts.forEach(function(script) {
-                        var lastRun = script.last_run ? '<br><small>Last run: ' + script.last_run + '</small>' : '';
+                        var lastRun = script.last_run ? '<br><small>Last run: ' + escapeHtml(script.last_run) + '</small>' : '';
                         var scheduleBadge = '';
                         if (script.schedule_type && script.schedule_type !== 'manual') {
                             var badgeClass = script.enabled ? 'bg-success' : 'bg-secondary';
-                            scheduleBadge = '<span class="schedule-badge ' + badgeClass + '">' + script.schedule_type + '</span>';
+                            scheduleBadge = '<span class="schedule-badge ' + badgeClass + '">' + escapeHtml(script.schedule_type) + '</span>';
                         }
                         var notifyBadge = '';
                         if (script.notify_enabled == 1) {
                             notifyBadge = '<span class="notify-badge"><i class="bi bi-bell"></i></span>';
                         }
 
-                        html += '<div class="script-item" onclick="loadScript(' + script.id + ')">';
-                        html += '<strong>' + script.name + '</strong>' + scheduleBadge + notifyBadge;
-                        html += '<br><small class="text-muted">' + (script.description || 'No description') + '</small>';
+                        html += '<div class="script-item" onclick="loadScript(' + parseInt(script.id, 10) + ')">';
+                        html += '<strong>' + escapeHtml(script.name) + '</strong>' + scheduleBadge + notifyBadge;
+                        html += '<br><small class="text-muted">' + escapeHtml(script.description || 'No description') + '</small>';
                         if (script.schedule_type !== 'manual' && script.schedule_time) {
-                            html += '<br><small class="text-info"><i class="bi bi-clock"></i> ' + formatSchedule(script) + '</small>';
+                            html += '<br><small class="text-info"><i class="bi bi-clock"></i> ' + escapeHtml(formatSchedule(script)) + '</small>';
                         }
                         html += lastRun;
                         html += '</div>';

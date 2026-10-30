@@ -1,0 +1,439 @@
+{% extends "master.html" %}
+
+{% block title %}
+Activity
+{% endblock %}
+
+{% block html_head %}
+<style>
+    .activity-viewer {
+        background: var(--dispatch-surface);
+        color: var(--dispatch-text);
+        border-radius: 12px;
+        box-shadow: var(--dispatch-shadow, 0 2px 8px rgba(0,0,0,0.08));
+        padding: 24px;
+    }
+
+    .activity-stats,
+    .activity-splits {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .stat-card,
+    .split-card {
+        flex: 1;
+        min-width: 180px;
+        padding: 16px;
+        border-radius: 8px;
+        background: var(--dispatch-surface-2, #f7f9fb);
+        color: var(--dispatch-text);
+        border: 1px solid var(--dispatch-border, #e3e8ee);
+        border-left: 4px solid #42B41C;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--dispatch-muted, #6c757d);
+    }
+
+    .stat-value {
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+
+    .activity-toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 12px 16px;
+        background: var(--dispatch-surface-2, #f8f9fa);
+        border-radius: 8px;
+    }
+
+    .result-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .result-served { background: #d1e7dd; color: #0f5132; }
+    .result-denied { background: #f8d7da; color: #842029; }
+    .result-not_found { background: #e2e3e5; color: #41464b; }
+    .result-auth_failure { background: #fff3cd; color: #664d03; }
+
+    .activity-table td {
+        vertical-align: top;
+        word-break: break-word;
+    }
+
+    .ua-cell {
+        max-width: 280px;
+        color: var(--dispatch-muted, #6c757d);
+        font-size: 12px;
+    }
+
+    .mini-table {
+        width: 100%;
+        margin-bottom: 0;
+    }
+
+    .mini-table td {
+        word-break: break-word;
+    }
+
+    .live-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 10px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: #d1e7dd;
+        color: #0f5132;
+        vertical-align: middle;
+    }
+
+    .live-pill.is-off {
+        background: #fff3cd;
+        color: #664d03;
+    }
+
+    .live-pill i {
+        font-size: 8px;
+    }
+
+    .activity-row-new {
+        animation: activityFlash 1.2s ease;
+    }
+
+    @keyframes activityFlash {
+        from { background: color-mix(in srgb, #42B41C 28%, transparent); }
+        to { background: transparent; }
+    }
+</style>
+{% endblock %}
+
+{% block bread_crumb %}
+<div class="pagetitle">
+  <h1>Client Activity <span id="activityLive" class="live-pill is-off"><i class="bi bi-circle-fill"></i> Connecting</span></h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item"><a href="/settings">Settings</a></li>
+      <li class="breadcrumb-item active">Activity</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block html_content %}
+<div class="activity-viewer">
+    <div class="activity-stats">
+        <div class="stat-card">
+            <div class="stat-label">Matching Requests</div>
+            <div class="stat-value" id="statTotal">{{ summary.total }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Served</div>
+            <div class="stat-value" id="statServed">{{ summary.served }}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#dc3545;">
+            <div class="stat-label">Failed Attempts</div>
+            <div class="stat-value" id="statFailed">{{ summary.failed }}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#ffc107;">
+            <div class="stat-label">Auth Failures</div>
+            <div class="stat-value" id="statAuth">{{ summary.auth_failure }}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#6c757d;">
+            <div class="stat-label">Not Found</div>
+            <div class="stat-value" id="statMissing">{{ summary.not_found }}</div>
+        </div>
+    </div>
+
+    <form id="activityFilters" class="activity-toolbar" method="get" action="/settings/activity">
+        <input type="text" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Path, user, IP, or user agent" style="width:240px;">
+        <input type="text" class="form-control form-control-sm" name="ip" value="{{ filters.ip }}" placeholder="Client IP" style="width:140px;">
+        <select class="form-control form-control-sm" name="result" style="width:150px;">
+            <option value="" {% if not filters.result %}selected{% endif %}>All results</option>
+            <option value="served" {% if filters.result == 'served' %}selected{% endif %}>Served</option>
+            <option value="denied" {% if filters.result == 'denied' %}selected{% endif %}>Denied</option>
+            <option value="not_found" {% if filters.result == 'not_found' %}selected{% endif %}>Not found</option>
+            <option value="auth_failure" {% if filters.result == 'auth_failure' %}selected{% endif %}>Auth failure</option>
+        </select>
+        <select class="form-control form-control-sm" name="limit" style="width:90px;">
+            {% for choice in [50, 100, 250, 500] %}
+            <option value="{{ choice }}" {% if filters.limit == choice %}selected{% endif %}>{{ choice }}</option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-success btn-sm" type="submit">
+            <i class="bi bi-funnel"></i> Filter
+        </button>
+        <a class="btn btn-outline-secondary btn-sm" href="/settings/activity">Clear</a>
+    </form>
+
+    <div class="activity-splits">
+        <div class="split-card">
+            <div class="stat-label">Top Requesters</div>
+            <table class="table table-sm mini-table">
+                <tbody id="topRequesters">
+                {% for row in summary.top_requesters %}
+                <tr>
+                    <td>{{ row.client_ip or 'unknown' }}{% if row.username %} ({{ row.username }}){% endif %}</td>
+                    <td class="text-end">{{ row.count }}</td>
+                </tr>
+                {% else %}
+                <tr><td class="text-muted">No requests in this view.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="split-card">
+            <div class="stat-label">Top Files</div>
+            <table class="table table-sm mini-table">
+                <tbody id="topFiles">
+                {% for row in summary.top_files %}
+                <tr>
+                    <td>{{ row.path or '/' }}</td>
+                    <td class="text-end">{{ row.count }}</td>
+                </tr>
+                {% else %}
+                <tr><td class="text-muted">No requests in this view.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover table-striped activity-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Result</th>
+                    <th>Path</th>
+                    <th>Client</th>
+                    <th>Identity</th>
+                    <th>User Agent</th>
+                </tr>
+            </thead>
+            <tbody id="activityBody">
+                {% for row in requests_rows %}
+                <tr data-request-id="{{ row.id }}">
+                    <td>{{ row.timestamp }}</td>
+                    <td><span class="result-badge result-{{ row.result if row.result in ['served', 'denied', 'not_found', 'auth_failure'] else 'not_found' }}">{{ row.result|replace('_', ' ') }}</span></td>
+                    <td>{{ row.path }}</td>
+                    <td>{{ row.client_ip }}</td>
+                    <td>
+                        {% if row.username %}{{ row.username }}{% else %}<span class="text-muted">anonymous</span>{% endif %}
+                        <div class="text-muted" style="font-size:12px;">{{ row.auth_method|replace('_', ' ') }}</div>
+                    </td>
+                    <td class="ua-cell">{{ row.user_agent }}</td>
+                </tr>
+                {% else %}
+                <tr id="activityEmpty">
+                    <td colspan="6" class="text-center text-muted">No client file requests match these filters.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block html_footer %}
+<script>
+(function () {
+    var RESULT_CLASS = {
+        served: 'result-served',
+        denied: 'result-denied',
+        not_found: 'result-not_found',
+        auth_failure: 'result-auth_failure'
+    };
+    var source = null;
+    var limit = {{ filters.limit|tojson }};
+
+    function label(value) {
+        return String(value == null ? '' : value).split('_').join(' ');
+    }
+
+    function cell(value, className) {
+        var td = document.createElement('td');
+        if (className) td.className = className;
+        td.textContent = value == null ? '' : String(value);
+        return td;
+    }
+
+    function setLive(connected) {
+        var pill = document.getElementById('activityLive');
+        if (!pill) return;
+        pill.classList.toggle('is-off', !connected);
+        pill.lastChild.textContent = connected ? ' Live' : ' Reconnecting';
+    }
+
+    function renderRow(row) {
+        var tr = document.createElement('tr');
+        tr.dataset.requestId = String(row.id);
+        tr.appendChild(cell(row.timestamp));
+        var badgeCell = document.createElement('td');
+        var badge = document.createElement('span');
+        badge.className = 'result-badge ' + (RESULT_CLASS[row.result] || '');
+        badge.textContent = label(row.result);
+        badgeCell.appendChild(badge);
+        tr.appendChild(badgeCell);
+        tr.appendChild(cell(row.path));
+        tr.appendChild(cell(row.client_ip));
+        var identity = document.createElement('td');
+        var who = document.createElement('div');
+        if (row.username) {
+            who.textContent = row.username;
+        } else {
+            who.className = 'text-muted';
+            who.textContent = 'anonymous';
+        }
+        var method = document.createElement('div');
+        method.className = 'text-muted';
+        method.style.fontSize = '12px';
+        method.textContent = label(row.auth_method || 'none');
+        identity.appendChild(who);
+        identity.appendChild(method);
+        tr.appendChild(identity);
+        tr.appendChild(cell(row.user_agent, 'ua-cell'));
+        return tr;
+    }
+
+    function newestId() {
+        var maxId = 0;
+        document.querySelectorAll('#activityBody tr[data-request-id]').forEach(function (row) {
+            var id = parseInt(row.dataset.requestId, 10);
+            if (id > maxId) maxId = id;
+        });
+        return maxId;
+    }
+
+    function trimRows() {
+        var rows = document.querySelectorAll('#activityBody tr[data-request-id]');
+        for (var i = limit; i < rows.length; i += 1) {
+            rows[i].remove();
+        }
+    }
+
+    function prependRow(row) {
+        var body = document.getElementById('activityBody');
+        var empty = document.getElementById('activityEmpty');
+        if (empty) empty.remove();
+        if (body.querySelector('tr[data-request-id="' + row.id + '"]')) return;
+        var tr = renderRow(row);
+        tr.className = 'activity-row-new';
+        body.insertBefore(tr, body.firstChild);
+        trimRows();
+    }
+
+    function replaceRows(rows) {
+        var body = document.getElementById('activityBody');
+        body.textContent = '';
+        if (!rows || !rows.length) {
+            var empty = document.createElement('tr');
+            empty.id = 'activityEmpty';
+            var td = document.createElement('td');
+            td.colSpan = 6;
+            td.className = 'text-center text-muted';
+            td.textContent = 'No client file requests match these filters.';
+            empty.appendChild(td);
+            body.appendChild(empty);
+            return;
+        }
+        rows.forEach(function (row) {
+            body.appendChild(renderRow(row));
+        });
+    }
+
+    function fillMini(id, rows, labelFor) {
+        var body = document.getElementById(id);
+        if (!body) return;
+        body.textContent = '';
+        (rows || []).forEach(function (row) {
+            var tr = document.createElement('tr');
+            tr.appendChild(cell(labelFor(row)));
+            var count = cell(row.count);
+            count.classList.add('text-end');
+            tr.appendChild(count);
+            body.appendChild(tr);
+        });
+    }
+
+    function renderSummary(summary) {
+        if (!summary) return;
+        document.getElementById('statTotal').textContent = summary.total;
+        document.getElementById('statServed').textContent = summary.served;
+        document.getElementById('statFailed').textContent = summary.failed;
+        document.getElementById('statAuth').textContent = summary.auth_failure;
+        document.getElementById('statMissing').textContent = summary.not_found;
+        fillMini('topRequesters', summary.top_requesters, function (row) {
+            var name = row.client_ip || 'unknown';
+            return row.username ? name + ' (' + row.username + ')' : name;
+        });
+        fillMini('topFiles', summary.top_files, function (row) {
+            return row.path || '/';
+        });
+    }
+
+    function streamUrl(since) {
+        var params = new URLSearchParams(new FormData(document.getElementById('activityFilters')));
+        params.set('since', String(since || 0));
+        params.delete('limit');
+        var selected = document.querySelector('#activityFilters [name="limit"]');
+        if (selected) params.set('limit', selected.value);
+        return '/api/file-requests/stream?' + params.toString();
+    }
+
+    function connectStream(since, replaceOnSnapshot) {
+        if (source) source.close();
+        setLive(false);
+        source = new EventSource(streamUrl(since));
+        source.onopen = function () { setLive(true); };
+        source.onerror = function () { setLive(false); };
+        source.addEventListener('snapshot', function (event) {
+            if (!replaceOnSnapshot) return;
+            var payload = JSON.parse(event.data);
+            replaceRows(payload.requests || []);
+            renderSummary(payload.summary);
+            setLive(true);
+        });
+        source.addEventListener('request', function (event) {
+            prependRow(JSON.parse(event.data));
+            setLive(true);
+        });
+        source.addEventListener('summary', function (event) {
+            renderSummary(JSON.parse(event.data));
+        });
+    }
+
+    var form = document.getElementById('activityFilters');
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var params = new URLSearchParams(new FormData(form));
+        history.replaceState(null, '', '/settings/activity?' + params.toString());
+        limit = parseInt(params.get('limit') || '100', 10);
+        connectStream(0, true);
+    });
+
+    connectStream(newestId(), false);
+})();
+</script>
+{% endblock %}

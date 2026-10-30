@@ -127,6 +127,15 @@ function loadAlerts() {
         });
 }
 
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function renderAlerts(alerts) {
     const tbody = document.getElementById('alertsTableBody');
 
@@ -136,17 +145,17 @@ function renderAlerts(alerts) {
     }
 
     tbody.innerHTML = alerts.map(alert => {
-        const typeLabel = alertTypeLabels[alert.alert_type] || alert.alert_type;
+        const typeLabel = escapeHtml(alertTypeLabels[alert.alert_type] || alert.alert_type);
         let targetDisplay = '-';
 
         if (alert.alert_type === 'user_login' && alert.target_id) {
             const user = users.find(u => u.id === alert.target_id);
-            targetDisplay = user ? user.username : `User ID: ${alert.target_id}`;
+            targetDisplay = user ? escapeHtml(user.username) : `User ID: ${parseInt(alert.target_id, 10)}`;
         } else if (alert.alert_type === 'file_download' && alert.target_id) {
             const file = files.find(f => f.id === alert.target_id);
-            targetDisplay = file ? file.filename : `File ID: ${alert.target_id}`;
+            targetDisplay = file ? escapeHtml(file.filename) : `File ID: ${parseInt(alert.target_id, 10)}`;
         } else if (alert.target_value) {
-            targetDisplay = alert.target_value;
+            targetDisplay = escapeHtml(alert.target_value);
         }
 
         const enabledChecked = alert.enabled ? 'checked' : '';
@@ -155,15 +164,15 @@ function renderAlerts(alerts) {
             <tr>
                 <td>${typeLabel}</td>
                 <td>${targetDisplay}</td>
-                <td>${alert.description || '-'}</td>
+                <td>${escapeHtml(alert.description || '-')}</td>
                 <td>
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" ${enabledChecked}
-                               onchange="toggleAlert(${alert.id}, this.checked)">
+                               onchange="toggleAlert(${parseInt(alert.id, 10)}, this.checked)">
                     </div>
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteAlert(${alert.id})">
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteAlert(${parseInt(alert.id, 10)})">
                         <i class="bi bi-trash"></i>
                     </button>
                 </td>
@@ -200,14 +209,14 @@ function updateAlertFields() {
             targetLabel.innerHTML = '<b>User</b>';
             targetSelect.style.display = 'block';
             targetSelect.innerHTML = '<option value="">Select user...</option>' +
-                users.map(u => `<option value="${u.id}">${u.username}</option>`).join('');
+                users.map(u => `<option value="${parseInt(u.id, 10)}">${escapeHtml(u.username)}</option>`).join('');
             break;
 
         case 'file_download':
             targetLabel.innerHTML = '<b>File</b>';
             targetSelect.style.display = 'block';
             targetSelect.innerHTML = '<option value="">Select file...</option>' +
-                files.map(f => `<option value="${f.id}">${f.filename}</option>`).join('');
+                files.map(f => `<option value="${parseInt(f.id, 10)}">${escapeHtml(f.filename)}</option>`).join('');
             break;
 
         case 'failed_logins':
@@ -249,7 +258,7 @@ function createAlert() {
             showNotification('Please select a target', false);
             return;
         }
-        data.target_id = parseInt(targetSelect.value);
+        data.target_id = alertType === 'file_download' ? targetSelect.value : parseInt(targetSelect.value, 10);
     } else {
         if (!targetInput.value) {
             showNotification('Please enter a value', false);

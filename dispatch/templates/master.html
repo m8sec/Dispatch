@@ -16,6 +16,24 @@
   <link href="/static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
   <link href="/static/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
   <link href="/static/css/style.css" rel="stylesheet">
+  <link href="/static/css/dispatch-theme.css?v=2" rel="stylesheet">
+  <script>
+    (function () {
+      var stored = localStorage.getItem('dispatch-theme');
+      var theme = stored === 'light' || stored === 'dark'
+        ? stored
+        : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-bs-theme', theme);
+      window.toggleDispatchTheme = function () {
+        var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        var next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        document.documentElement.setAttribute('data-bs-theme', next);
+        localStorage.setItem('dispatch-theme', next);
+      };
+    })();
+  </script>
 
   <style>
     /* Dispatch Brand Colors */
@@ -108,6 +126,11 @@
     <!-- ======= User Icon Dropdown ======= -->
     <nav class="header-nav ms-auto">
       <ul class="d-flex align-items-center">
+        <li class="nav-item pe-2">
+          <button type="button" class="theme-toggle" onclick="toggleDispatchTheme()" title="Toggle color theme" aria-label="Toggle color theme">
+            <i class="bi bi-moon-stars"></i>
+          </button>
+        </li>
         <li class="nav-item dropdown pe-3">
           <a class="nav-link nav-profile d-flex align-items-center pe-0" href="#" data-bs-toggle="dropdown">
             <i style="font-size:25px;" class="rounded-circle bi bi-person-circle"></i>
@@ -200,7 +223,7 @@
         </a>
         <ul id="upload-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
           <li>
-            <a href="/file/upload">
+            <a href="/file/upload" id="sidebarUploadLink">
               <i class="bi bi-cloud-arrow-up" style="font-size:15px;"></i>
               <span>Upload</span>
             </a>
@@ -291,7 +314,7 @@
       </li>
       {% endif %}
 
-      {% if token['role'] > 2 and not config.get('disable_exec') %}
+      {% if token['role'] > 2 and config.get('script_interface') %}
       <li class="nav-item">
         <a class="nav-link collapsed" href="/scripts">
           <i class="bi bi-code-square"></i>
@@ -301,6 +324,12 @@
       {% endif %}
 
       {% if token['role'] > 2 %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/settings/activity">
+          <i class="bi bi-activity"></i>
+          <span>Activity</span>
+        </a>
+      </li>
       <li class="nav-item">
         <a class="nav-link collapsed" href="/settings/log">
           <i class="bi bi-code-slash"></i>

@@ -134,7 +134,7 @@ Reverse Proxy
 {% endblock %}
 
 {% block html_footer %}
-{{ status_msg }}
+{% include "_notice.html" %}
 <script>
     $(document).ready(function () {
         $("#addRow").click(function () {
