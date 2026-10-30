@@ -252,6 +252,24 @@
         </a>
       </li>
 
+      {% if token['role'] > 2 %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/settings/activity">
+          <i class="bi bi-activity"></i>
+          <span>Activity</span>
+        </a>
+      </li>
+      {% endif %}
+
+      {% if token['role'] > 3 %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/settings/alerts">
+          <i class="bi bi-bell"></i>
+          <span>Alerts</span>
+        </a>
+      </li>
+      {% endif %}
+
       <br>
       <li class="nav-heading">Settings</li>
       <li class="nav-item">
@@ -274,15 +292,6 @@
           <span>Reverse Proxy</span>
         </a>
       </li>
-
-      {% if token['role'] > 2 %}
-      <li class="nav-item">
-        <a class="nav-link collapsed" href="/settings/alerts">
-          <i class="bi bi-bell"></i>
-          <span>Alerts</span>
-        </a>
-      </li>
-      {% endif %}
 
       {% endif %}
 
@@ -324,12 +333,6 @@
       {% endif %}
 
       {% if token['role'] > 2 %}
-      <li class="nav-item">
-        <a class="nav-link collapsed" href="/settings/activity">
-          <i class="bi bi-activity"></i>
-          <span>Activity</span>
-        </a>
-      </li>
       <li class="nav-item">
         <a class="nav-link collapsed" href="/settings/log">
           <i class="bi bi-code-slash"></i>

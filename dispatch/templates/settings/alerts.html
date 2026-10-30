@@ -20,12 +20,12 @@ Alerts
 {% endblock %}
 
 {% block html_content %}
-<div class="card" style="width:80%;">
+<div class="card mb-4">
     <div class="card-body">
       <h5 class="card-title">Add Alert</h5>
-        <form id="alertForm" class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label"><b>Alert Type</b></label>
+        <form id="alertForm" class="d-flex flex-column gap-3">
+            <div>
+                <label class="form-label mb-1"><b>Alert Type</b></label>
                 <select class="form-select" id="alertType" name="alert_type" onchange="updateAlertFields()">
                     <option value="">Select alert type...</option>
                     <option value="user_login">User Login</option>
@@ -35,19 +35,19 @@ Alerts
                 </select>
             </div>
 
-            <div class="col-md-6" id="targetFieldContainer" style="display:none;">
-                <label class="form-label" id="targetLabel"><b>Target</b></label>
+            <div id="targetFieldContainer" style="display:none;">
+                <label class="form-label mb-1" id="targetLabel"><b>Target</b></label>
                 <select class="form-select" id="targetSelect" name="target_id" style="display:none;">
                 </select>
                 <input type="text" class="form-control" id="targetInput" name="target_value" style="display:none;" placeholder="">
             </div>
 
-            <div class="col-md-12" id="descriptionContainer" style="display:none;">
-                <label class="form-label"><b>Description</b></label>
+            <div id="descriptionContainer" style="display:none;">
+                <label class="form-label mb-1"><b>Description</b></label>
                 <input type="text" class="form-control" id="alertDescription" name="description" placeholder="Alert description (auto-generated if empty)">
             </div>
 
-            <div class="col-md-3">
+            <div>
               <button class="btn btn-success w-100" type="button" onclick="createAlert()">
                 <i class="bi bi-bell-fill"></i>&nbsp;
                 Add Alert
@@ -57,7 +57,7 @@ Alerts
     </div>
 </div>
 
-<div class="card" style="width:80%;">
+<div class="card">
   <div class="card-body">
     <h5 class="card-title">Configured Alerts</h5>
     <table class="table table-striped" id="alertsTable">

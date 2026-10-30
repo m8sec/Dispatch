@@ -734,13 +734,13 @@ class DispatchServer:
     # ===== ALERTS CONFIGURATION ROUTES =====
 
     @app.route('/settings/alerts', methods=['GET'])
-    @auth.operator_required
+    @auth.admin_required
     def settings_alerts(token):
         """Alerts settings page"""
         return render_template('settings/alerts.html', token=token, config=current_app.config)
 
     @app.route('/api/alerts', methods=['GET'])
-    @auth.operator_required
+    @auth.admin_required
     def api_list_alerts(token):
         """List all configured alerts"""
         try:
@@ -756,7 +756,7 @@ class DispatchServer:
             return Response(response=dumps({'error': str(e)}), status=500, mimetype='application/json')
 
     @app.route('/api/alerts', methods=['POST'])
-    @auth.operator_required
+    @auth.admin_required
     def api_create_alert(token):
         """Create a new alert"""
         try:
@@ -804,7 +804,7 @@ class DispatchServer:
             return Response(response=dumps({'error': str(e)}), status=500, mimetype='application/json')
 
     @app.route('/api/alerts/<int:alert_id>', methods=['PUT'])
-    @auth.operator_required
+    @auth.admin_required
     def api_update_alert(token, alert_id):
         """Update alert enabled status"""
         try:
@@ -821,7 +821,7 @@ class DispatchServer:
             return Response(response=dumps({'error': str(e)}), status=500, mimetype='application/json')
 
     @app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
-    @auth.operator_required
+    @auth.admin_required
     def api_delete_alert(token, alert_id):
         """Delete an alert"""
         try:
