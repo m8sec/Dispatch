@@ -9,6 +9,13 @@ def test_dark_theme_covers_shared_surfaces():
         'html[data-theme="dark"] .table',
         'html[data-theme="dark"] table.dataTable tbody td',
         'html[data-theme="dark"] table.dataTable tbody tr:nth-of-type(odd) > .sorting_1',
+        'html[data-theme="dark"] table.dataTable tbody tr:nth-of-type(even) > .sorting_1',
+        'html[data-theme="dark"] table.dataTable.table-hover > tbody > tr:hover > td',
+        'html[data-theme="dark"] .form-switch .form-check-input',
+        '.dataTables_wrapper .dataTables_length label',
+        '.page-item.disabled .page-link',
+        '--dispatch-control-border',
+        '--dispatch-subtle',
         'html[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > *',
         'html[data-theme="dark"] .form-control',
         'html[data-theme="dark"] .form-control:focus',
@@ -32,8 +39,11 @@ def test_dark_theme_covers_shared_surfaces():
     login = Path("dispatch/templates/login.html").read_text(encoding="utf-8")
     master = Path("dispatch/templates/master.html").read_text(encoding="utf-8")
     assert "toggleDispatchTheme" in login
-    assert "dispatch-theme.css?v=6" in login
-    assert master.count("dispatch-theme.css?v=6") == 2
+    assert "dispatch-theme.css?v=7" in login
+    assert master.count("dispatch-theme.css?v=7") == 2
+    listing = Path("dispatch/templates/js/dispatch.js").read_text(encoding="utf-8")
+    assert 'class="dispatch-subtle"' in listing
+    assert "color:grey" not in listing
     assert "localStorage.setItem('dispatch-theme'" in master
 
 

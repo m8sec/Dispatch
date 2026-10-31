@@ -226,7 +226,7 @@ function renderFilesAndFolders(files, folders) {
                         html += htmlEscape(o['filename']);
                         var budget = downloadBudget(o);
                         if (budget) {
-                            html += '<div style="font-size:12px;color:grey;">' + htmlEscape(budget) + '</div>';
+                            html += '<div class="dispatch-subtle">' + htmlEscape(budget) + '</div>';
                         }
                         html += " " + `${o['encrypt'] ? "🔒" : ""}`;
                         html += `${o['access'] == 1 ? "🌐" : ""}`;
@@ -241,7 +241,7 @@ function renderFilesAndFolders(files, folders) {
                     if (o.isFolder) {
                         return '-';
                     }
-                    return '<span style="color:grey;">' + htmlEscape(o['file_size'] || '-') + '</span>';
+                    return '<span class="dispatch-subtle">' + htmlEscape(o['file_size'] || '-') + '</span>';
                 }
             },
             {
@@ -262,7 +262,7 @@ function renderFilesAndFolders(files, folders) {
                     var html = htmlEscape(o['alias']);
                     html += '<span style="float:right;">';
                     html += '<a href="' + htmlEscape(url) + '" onclick="copyURI(event, this)">';
-                    html += '<i class="bi bi-clipboard" title="Click to copy"></i>';
+                    html += '<i class="bi bi-clipboard dispatch-icon" title="Click to copy"></i>';
                     html += '</a>';
                     html += '</span>';
                     return html;

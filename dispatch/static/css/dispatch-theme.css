@@ -10,7 +10,9 @@ html[data-theme="light"] {
   --dispatch-surface-3: #e7edf3;
   --dispatch-text: #1b2430;
   --dispatch-muted: #5d6b7c;
+  --dispatch-subtle: #3e4d5e;
   --dispatch-border: #e3e8ee;
+  --dispatch-control-border: #3e4e60;
   --dispatch-accent: #2f9e44;
   --dispatch-accent-2: #3cb54d;
   --dispatch-shadow: 0 10px 30px rgba(22, 34, 51, 0.06);
@@ -50,14 +52,16 @@ html[data-theme="dark"] {
   --dispatch-surface-2: #202b38;
   --dispatch-surface-3: #2a3848;
   --dispatch-text: #e7eef6;
-  --dispatch-muted: #a9b6c6;
+  --dispatch-muted: #d5deea;
+  --dispatch-subtle: #d5deea;
   --dispatch-border: #2c3948;
+  --dispatch-control-border: #9eb0c4;
   --dispatch-accent: #4bd11e;
   --dispatch-accent-2: #6ee04a;
   --dispatch-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
   --dispatch-code-bg: #1e2430;
   --dispatch-code-text: #e7eef6;
-  --dispatch-input-bg: #202b38;
+  --dispatch-input-bg: #101820;
   --dispatch-header-bg: #101318;
   --dispatch-header-text: #f4f7fb;
   --dispatch-success-bg: #173526;
@@ -249,7 +253,7 @@ input[type="time"],
 input[type="url"] {
   background: var(--dispatch-input-bg);
   color: var(--dispatch-text);
-  border: 1px solid var(--dispatch-border);
+  border: 1px solid var(--dispatch-control-border) !important;
   border-radius: 10px;
 }
 
@@ -276,12 +280,77 @@ input::placeholder {
 
 .form-control:focus,
 .form-select:focus,
+.access_perms:focus,
 textarea:focus,
 input:focus {
   background: var(--dispatch-input-bg);
   color: var(--dispatch-text);
-  border-color: var(--dispatch-accent);
+  border-color: var(--dispatch-accent) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--dispatch-accent) 25%, transparent);
+}
+
+.dispatch-subtle {
+  color: var(--dispatch-subtle) !important;
+}
+
+table a .bi,
+.table .bi-clipboard,
+.dispatch-icon {
+  color: var(--dispatch-accent);
+}
+
+html[data-theme="dark"] table a .bi,
+html[data-theme="dark"] .table .bi-clipboard,
+html[data-theme="dark"] .dispatch-icon {
+  color: var(--dispatch-accent-2) !important;
+}
+
+.form-switch .form-check-input {
+  background-color: #d5dde6;
+  border: 2px solid var(--dispatch-control-border);
+  --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23ffffff'/%3e%3c/svg%3e");
+  background-image: var(--bs-form-switch-bg);
+}
+
+.form-switch .form-check-input:checked {
+  background-color: var(--dispatch-accent);
+  border-color: var(--dispatch-accent);
+}
+
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_length label {
+  white-space: nowrap;
+}
+
+.dataTables_wrapper .dataTables_length select {
+  display: inline-block !important;
+  width: auto !important;
+  margin: 0 0.4rem;
+  vertical-align: middle;
+}
+
+.page-link,
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  background: var(--dispatch-surface) !important;
+  color: var(--dispatch-text) !important;
+  border: 1px solid var(--dispatch-control-border) !important;
+  opacity: 1 !important;
+}
+
+.page-item.active .page-link,
+.page-link.active,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+  background: var(--dispatch-accent) !important;
+  border-color: var(--dispatch-accent) !important;
+  color: #102013 !important;
+}
+
+.page-item.disabled .page-link,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled {
+  background: var(--dispatch-surface-2) !important;
+  color: var(--dispatch-text) !important;
+  border: 1px solid var(--dispatch-control-border) !important;
+  opacity: 1 !important;
 }
 
 .form-control[readonly],
@@ -309,9 +378,10 @@ input:focus {
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--dispatch-muted);
-  background: var(--dispatch-surface-2);
-  border-color: var(--dispatch-border);
+  font-weight: 700;
+  color: var(--dispatch-text);
+  background: var(--dispatch-surface-3);
+  border-color: var(--dispatch-control-border);
 }
 
 .dropdown-menu {
@@ -517,13 +587,24 @@ html[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > .sorting_
   box-shadow: none !important;
 }
 
+html[data-theme="dark"] table.dataTable tbody tr:nth-of-type(even) > .sorting_1,
+html[data-theme="dark"] table.dataTable.display tbody tr.even > .sorting_1,
+html[data-theme="dark"] table.dataTable.order-column.stripe tbody tr.even > .sorting_1 {
+  background-color: var(--dispatch-surface) !important;
+  color: var(--dispatch-text) !important;
+  box-shadow: none !important;
+}
+
 html[data-theme="dark"] .table-hover > tbody > tr:hover > *,
 html[data-theme="dark"] table.dataTable.hover tbody tr:hover,
 html[data-theme="dark"] table.dataTable.hover tbody tr:hover > *,
 html[data-theme="dark"] table.dataTable.display tbody tr:hover,
 html[data-theme="dark"] table.dataTable.display tbody tr:hover > *,
 html[data-theme="dark"] table.dataTable.hover tbody tr:hover > .sorting_1,
-html[data-theme="dark"] table.dataTable.display tbody tr:hover > .sorting_1 {
+html[data-theme="dark"] table.dataTable.display tbody tr:hover > .sorting_1,
+html[data-theme="dark"] table.dataTable.table-hover > tbody > tr:hover > td,
+html[data-theme="dark"] table.dataTable.table-hover > tbody > tr:hover > td.sorting_1,
+html[data-theme="dark"] .table-hover > tbody > tr:hover > td.sorting_1 {
   background-color: var(--dispatch-surface-3) !important;
   color: var(--dispatch-text) !important;
   box-shadow: none !important;
@@ -561,7 +642,20 @@ html[data-theme="dark"] .form-control[readonly],
 html[data-theme="dark"] .form-control:disabled {
   background: var(--dispatch-input-bg) !important;
   color: var(--dispatch-text) !important;
-  border-color: var(--dispatch-border) !important;
+  border-color: var(--dispatch-control-border) !important;
+}
+
+html[data-theme="dark"] .form-switch .form-check-input {
+  background-color: #4a6074 !important;
+  border: 2px solid var(--dispatch-control-border) !important;
+  --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23ffffff'/%3e%3c/svg%3e");
+  background-image: var(--bs-form-switch-bg) !important;
+}
+
+html[data-theme="dark"] .form-switch .form-check-input:checked {
+  background-color: var(--dispatch-accent) !important;
+  border-color: var(--dispatch-control-border) !important;
+  background-image: var(--bs-form-switch-bg) !important;
 }
 
 html[data-theme="dark"] .form-control:focus,
