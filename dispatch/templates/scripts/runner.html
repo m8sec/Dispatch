@@ -31,17 +31,20 @@ Script Runner
         padding: 10px;
         margin: 5px 0;
         border-left: 3px solid #42B41C;
-        background-color: #f8f9fa;
+        background-color: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
         cursor: pointer;
     }
 
     .script-item:hover {
-        background-color: #e9ecef;
+        background-color: var(--dispatch-surface-3);
+        color: var(--dispatch-text);
     }
 
     .script-item.selected {
-        background-color: #d4edda;
-        border-left-color: #28a745;
+        background-color: color-mix(in srgb, var(--dispatch-accent) 22%, var(--dispatch-surface-2));
+        color: var(--dispatch-text);
+        border-left-color: var(--dispatch-accent);
     }
 
     .schedule-badge {
@@ -52,7 +55,8 @@ Script Runner
     }
 
     .schedule-options {
-        background: #f8f9fa;
+        background: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
         padding: 15px;
         border-radius: 8px;
         margin-top: 10px;

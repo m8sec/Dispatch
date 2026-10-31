@@ -67,10 +67,10 @@ Activity
         text-transform: uppercase;
     }
 
-    .result-served { background: #d1e7dd; color: #0f5132; }
-    .result-denied { background: #f8d7da; color: #842029; }
-    .result-not_found { background: #e2e3e5; color: #41464b; }
-    .result-auth_failure { background: #fff3cd; color: #664d03; }
+    .result-served { background: var(--dispatch-success-bg); color: var(--dispatch-success-text); }
+    .result-denied { background: var(--dispatch-danger-bg); color: var(--dispatch-danger-text); }
+    .result-not_found { background: var(--dispatch-neutral-bg); color: var(--dispatch-neutral-text); }
+    .result-auth_failure { background: var(--dispatch-warning-bg); color: var(--dispatch-warning-text); }
 
     .activity-table td {
         vertical-align: top;
@@ -103,14 +103,14 @@ Activity
         font-weight: 700;
         letter-spacing: 0.04em;
         text-transform: uppercase;
-        background: #d1e7dd;
-        color: #0f5132;
+        background: var(--dispatch-success-bg);
+        color: var(--dispatch-success-text);
         vertical-align: middle;
     }
 
     .live-pill.is-off {
-        background: #fff3cd;
-        color: #664d03;
+        background: var(--dispatch-warning-bg);
+        color: var(--dispatch-warning-text);
     }
 
     .live-pill i {

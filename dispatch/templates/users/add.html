@@ -118,7 +118,7 @@
           {% if not user %}
           <input type="text" class="form-control" name="username" required>
           {% else %}
-          <input type="text" class="form-control" style="background-color:#f0f4f7;" name="username" value="{{ user['username'] }}" readonly="readonly">
+          <input type="text" class="form-control" name="username" value="{{ user['username'] }}" readonly="readonly">
           {% endif %}
         </div>
 
@@ -126,7 +126,7 @@
         <div class="col-md-10">
           <label>API Key</label>
           <div class="input-group actions">
-            <input type="password" class="form-control" name="api_key" id="api_key" style="background-color:#f0f4f7;" value="{{ user['api_key'] }}" readonly="readonly">
+            <input type="password" class="form-control" name="api_key" id="api_key" value="{{ user['api_key'] }}" readonly="readonly">
             <button type="button" style="background-color:black;" class="btn btn-success btn-sm" onclick="updateAPIKey({{ user['id'] }})">
               <i class="bi bi-arrow-clockwise" title="Generate"></i>
             </button>

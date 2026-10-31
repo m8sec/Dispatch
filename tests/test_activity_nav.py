@@ -3,11 +3,38 @@ from pathlib import Path
 from tests.conftest import login_as
 
 
-def test_dark_sidebar_submenus_match_parent_nav():
+def test_dark_theme_covers_shared_surfaces():
     css = Path("dispatch/static/css/dispatch-theme.css").read_text(encoding="utf-8")
-    assert 'html[data-theme="dark"] #sidebar .nav-content a' in css
-    assert 'html[data-theme="dark"] #sidebar .nav-content a:hover' in css
-    assert 'html[data-theme="dark"] #sidebar .nav-content a.active' in css
+    for selector in (
+        'html[data-theme="dark"] .table',
+        'html[data-theme="dark"] table.dataTable tbody td',
+        'html[data-theme="dark"] table.dataTable tbody tr:nth-of-type(odd) > .sorting_1',
+        'html[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > *',
+        'html[data-theme="dark"] .form-control',
+        'html[data-theme="dark"] .form-control:focus',
+        'html[data-theme="dark"] .input-group-text',
+        'html[data-theme="dark"] .dropdown-menu',
+        'html[data-theme="dark"] .dropdown-menu-arrow::before',
+        'html[data-theme="dark"] .hljs',
+        'html[data-theme="dark"] .toc-box',
+        'html[data-theme="dark"] #sidebar .nav-content a',
+        'html[data-theme="dark"] .modal-content',
+        'html[data-theme="dark"] .alert-success',
+        'html[data-theme="dark"] .warning-box',
+        "--bs-table-bg: var(--dispatch-surface)",
+        "--dispatch-code-bg",
+        "--dispatch-header-bg",
+        "--dispatch-success-bg",
+        "--dispatch-warning-bg",
+    ):
+        assert selector in css
+    assert "--bs-table-bg: transparent" not in css
+    login = Path("dispatch/templates/login.html").read_text(encoding="utf-8")
+    master = Path("dispatch/templates/master.html").read_text(encoding="utf-8")
+    assert "toggleDispatchTheme" in login
+    assert "dispatch-theme.css?v=6" in login
+    assert master.count("dispatch-theme.css?v=6") == 2
+    assert "localStorage.setItem('dispatch-theme'" in master
 
 
 def test_alerts_form_stacks_the_submit_button(admin_client):

@@ -16,7 +16,7 @@
   <link href="/static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
   <link href="/static/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
   <link href="/static/css/style.css" rel="stylesheet">
-  <link href="/static/css/dispatch-theme.css?v=3" rel="stylesheet">
+  <link href="/static/css/dispatch-theme.css?v=6" rel="stylesheet">
   <script>
     (function () {
       var stored = localStorage.getItem('dispatch-theme');
@@ -128,7 +128,8 @@
       <ul class="d-flex align-items-center">
         <li class="nav-item pe-2">
           <button type="button" class="theme-toggle" onclick="toggleDispatchTheme()" title="Toggle color theme" aria-label="Toggle color theme">
-            <i class="bi bi-moon-stars"></i>
+            <i class="bi bi-moon-stars theme-icon-moon"></i>
+            <i class="bi bi-sun theme-icon-sun"></i>
           </button>
         </li>
         <li class="nav-item dropdown pe-3">
@@ -383,5 +384,6 @@
   <script src="/static/js/main.js"></script>
   <script src="/js/dispatch.js"></script>
   {% block html_footer %}{% endblock %}
+  <link href="/static/css/dispatch-theme.css?v=6" rel="stylesheet">
 </body>
 </html>
