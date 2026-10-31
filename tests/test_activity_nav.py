@@ -39,8 +39,8 @@ def test_dark_theme_covers_shared_surfaces():
     login = Path("dispatch/templates/login.html").read_text(encoding="utf-8")
     master = Path("dispatch/templates/master.html").read_text(encoding="utf-8")
     assert "toggleDispatchTheme" in login
-    assert "dispatch-theme.css?v=7" in login
-    assert master.count("dispatch-theme.css?v=7") == 2
+    assert "dispatch-theme.css?v=8" in login
+    assert master.count("dispatch-theme.css?v=8") == 2
     listing = Path("dispatch/templates/js/dispatch.js").read_text(encoding="utf-8")
     assert 'class="dispatch-subtle"' in listing
     assert "color:grey" not in listing

@@ -488,11 +488,22 @@ html[data-theme="dark"] .dispatch-icon {
 }
 
 pre,
+pre code,
+.hljs {
+  background: var(--dispatch-code-bg);
+  color: var(--dispatch-code-text);
+  border-color: var(--dispatch-border);
+}
+
 code,
-.hljs,
 #scriptEditor,
 #consoleOutput {
   border-color: var(--dispatch-border);
+}
+
+pre .copy-btn,
+pre .copy-btn i {
+  color: #d5deea;
 }
 
 .toc-box,

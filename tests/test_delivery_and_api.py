@@ -1,6 +1,7 @@
 import base64
 import subprocess
 import sys
+from pathlib import Path
 
 from dispatch.client_app import _xor_bytes
 from dispatch.db import DispatchDB
@@ -95,6 +96,17 @@ def test_cradles_include_new_methods(admin_client):
     assert "bitsadmin" in html
     assert "Invoke-WebRequest" in html
     assert 'id="ps1_b64"' in html
+    assert 'class="language-bash" id="certutil"' in html
+    assert 'class="language-bash" id="bitsadmin"' in html
+    assert 'class="language-c#" id="iwr"' in html
+    assert 'class="language-c#" id="ps1_b64"' in html
+    assert "language-bat" not in html
+    assert "language-powershell" not in html
+    assert "function highlightCradles()" in html
+    assert "highlightCradles();" in html
+    css = Path("dispatch/static/css/dispatch-theme.css").read_text(encoding="utf-8")
+    assert "pre code,\n.hljs" in css
+    assert "background: var(--dispatch-code-bg);" in css
     assert 'id="covert_download"' in html
     assert "Bash Curl" in html
 
