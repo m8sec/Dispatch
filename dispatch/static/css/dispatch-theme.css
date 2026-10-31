@@ -143,6 +143,32 @@ html[data-theme="dark"] #sidebar .nav-link.collapsed i {
   color: #a9b6c6 !important;
 }
 
+html[data-theme="dark"] #sidebar .nav-content,
+html[data-theme="dark"] #sidebar .nav-content a,
+html[data-theme="dark"] #sidebar .nav-content a span,
+html[data-theme="dark"] #sidebar .nav-content a i {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #e7eef6 !important;
+  border-color: transparent !important;
+}
+
+html[data-theme="dark"] #sidebar .nav-content a:hover,
+html[data-theme="dark"] #sidebar .nav-content a:focus,
+html[data-theme="dark"] #sidebar .nav-content a.active {
+  background: #202b38 !important;
+  background-color: #202b38 !important;
+  color: #e7eef6 !important;
+}
+
+html[data-theme="dark"] #sidebar .nav-content a:hover i,
+html[data-theme="dark"] #sidebar .nav-content a:focus i,
+html[data-theme="dark"] #sidebar .nav-content a.active i {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #a9b6c6 !important;
+}
+
 .sidebar-nav .nav-link:hover,
 .sidebar-nav .nav-link.active,
 .sidebar-nav .nav-content a:hover {

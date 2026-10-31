@@ -1,4 +1,13 @@
+from pathlib import Path
+
 from tests.conftest import login_as
+
+
+def test_dark_sidebar_submenus_match_parent_nav():
+    css = Path("dispatch/static/css/dispatch-theme.css").read_text(encoding="utf-8")
+    assert 'html[data-theme="dark"] #sidebar .nav-content a' in css
+    assert 'html[data-theme="dark"] #sidebar .nav-content a:hover' in css
+    assert 'html[data-theme="dark"] #sidebar .nav-content a.active' in css
 
 
 def test_alerts_form_stacks_the_submit_button(admin_client):
