@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 import os
+import time
 import jwt
 import shutil
 import logging
-import requests
 import base64
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from json import dumps
 from io import BytesIO
 from urllib.parse import urlparse
-from markupsafe import escape, Markup
+from markupsafe import escape
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
-from flask import Flask, request, redirect, render_template, Response, send_file, current_app, abort, url_for
+from flask import Flask, Response, abort, current_app, redirect, render_template, request, send_file, stream_with_context, url_for
 
 from dispatch import auth
+from dispatch.client_app import _covert_fetch, _covert_upload_body, _upload_token
 from dispatch import config
 from dispatch.db import DispatchDB
 
@@ -27,6 +28,7 @@ try:
 except ImportError:
     MFA_AVAILABLE = False
 log = logging.getLogger('dispatch-logger')
+_last_disk_reload = {'at': 0.0}
 SCRIPT_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 
@@ -39,7 +41,8 @@ def _execute_script_content(script_content, timeout=30):
             tmp.write(script_content)
             tmp_path = tmp.name
 
-        result = subprocess.run(['python3', tmp_path],
+        # Script runner executes operator-authored Python.
+        result = subprocess.run(['python3', tmp_path],  # noqa: S603, S607
                                 capture_output=True,
                                 text=True,
                                 timeout=timeout)
@@ -52,7 +55,7 @@ def _execute_script_content(script_content, timeout=30):
             try:
                 os.remove(tmp_path)
             except Exception:
-                pass
+                logging.debug('Failed to remove temporary script file', exc_info=True)
 
 
 def _can_access_folder(user_role, folder_access):
@@ -190,7 +193,113 @@ def _update_file_paths_for_folder_tree(db, folder_id):
             db.update_file_storage_by_id(file_data['id'], expected_path, file_folder_id)
 
 
-def _render_file_form(template_name, token, status_msg=''):
+def _max_downloads_from_form():
+    raw = (request.form.get('max_downloads') or '').strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    # 0 means unlimited and is stored as NULL.
+    return value if value > 0 else None
+
+
+# API-key clients only need enough to automate list/upload/download.
+# Paths, uploader, host, folder ids, and encryption settings stay off this payload.
+_PUBLIC_FILE_KEYS = (
+    'id',
+    'filename',
+    'alias',
+    'file_size',
+    'access',
+    'max_downloads',
+    'download_count',
+)
+
+
+def _public_file_summary(record):
+    return {key: record.get(key) for key in _PUBLIC_FILE_KEYS}
+
+
+def _session_user():
+    token = auth.validateToken(request)
+    return token if isinstance(token, dict) else None
+
+
+def _files_visible_to(db, user_role, include_size=False):
+    """Files the caller's role may see, including folder access checks."""
+    all_files = db.list_files(include_size=include_size)
+    folder_access_map = {folder['id']: folder['access'] for folder in db.list_folders()}
+    visible = []
+    for file in all_files:
+        folder_id = file.get('folder_id')
+        if folder_id and not _can_access_folder(user_role, folder_access_map.get(folder_id, 2)):
+            continue
+        # Private files are operator-and-above. Public and public-once are visible once authenticated.
+        if file.get('access', 3) == 3 and user_role < 3:
+            continue
+        visible.append(file)
+    return visible
+
+
+def _page_notice(message, success=True):
+    """Plain notification payload. Templates pass it through |tojson."""
+    return {'message': str(message), 'success': bool(success)}
+
+
+_ACTIVITY_RESULTS = {'served', 'denied', 'not_found', 'auth_failure'}
+
+
+def _activity_query():
+    """Shared filters for the activity page and its live stream."""
+    result = request.args.get('result', '').strip()
+    if result not in _ACTIVITY_RESULTS:
+        result = ''
+    ip = request.args.get('ip', '').strip()[:128]
+    search = request.args.get('q', '').strip()[:256]
+    try:
+        limit = int(request.args.get('limit', 100))
+    except (TypeError, ValueError):
+        limit = 100
+    limit = min(max(limit, 1), 500)
+    since_raw = request.headers.get('Last-Event-ID', request.args.get('since', 0))
+    try:
+        since = int(since_raw or 0)
+    except (TypeError, ValueError):
+        since = 0
+    return {
+        'result': result,
+        'ip': ip,
+        'search': search,
+        'limit': limit,
+        'since': max(since, 0),
+    }
+
+
+def _sse(event, payload, event_id=None):
+    """One Server-Sent Event. JSON encoding keeps request text out of the framing."""
+    lines = []
+    if event_id is not None:
+        lines.append(f'id: {int(event_id)}')
+    lines.append(f'event: {event}')
+    lines.append('data: ' + dumps(payload, separators=(',', ':')))
+    return '\n'.join(lines) + '\n\n'
+
+
+def _coerce_folder_id(db, folder_id):
+    if folder_id in (None, '', False):
+        return None
+    try:
+        folder_id = int(folder_id)
+    except (TypeError, ValueError):
+        return None
+    if folder_id and db.get_folder_by_id(folder_id):
+        return folder_id
+    return None
+
+
+def _render_file_form(template_name, token, status_msg=None, form_error='', folder_id=None):
     db = DispatchDB(current_app.config['db_name'])
     try:
         return render_template(
@@ -198,13 +307,15 @@ def _render_file_form(template_name, token, status_msg=''):
             token=token,
             config=current_app.config,
             status_msg=status_msg,
-            folders=_folder_options(db)
+            form_error=form_error,
+            folders=_folder_options(db),
+            selected_folder=_coerce_folder_id(db, folder_id),
         )
     finally:
         db.close()
 
 
-class DispatchServer(object):
+class DispatchServer:
     app = Flask(__name__)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.secret_key = config.SECRET_KEY
@@ -220,9 +331,11 @@ class DispatchServer(object):
             return redirect(url_for('user_edit', id=token['id']))
         status = request.args.get('status')
         if status == 'file_deleted':
-            status_msg = Markup('<script>showNotification("File deleted successfully!", true);</script>')
+            status_msg = _page_notice('File deleted successfully!', True)
         elif status == 'file_delete_failed':
-            status_msg = Markup('<script>showNotification("Failed to delete file.", false);</script>')
+            status_msg = _page_notice('Failed to delete file.', False)
+        elif status == 'file_uploaded':
+            status_msg = _page_notice('File(s) uploaded successfully!', True)
         return render_template('index.html', token=token, config=current_app.config, status_msg=status_msg)
 
     @app.route('/login', methods=['GET', 'POST'])
@@ -231,7 +344,7 @@ class DispatchServer(object):
             logging.debug(f'Rejected login attempt from {request.remote_addr} due to login restrictions.')
             return redirect(current_app.config['redirect_url'], 302)
 
-        status = '<div></div>'
+        login_error = ''
         if request.method == 'POST':
             db = DispatchDB(config.DB_NAME)
 
@@ -247,12 +360,11 @@ class DispatchServer(object):
                     if token_data.get('mfa_pending'):
                         username = token_data.get('username')
                 except Exception:
-                    pass
+                    logging.debug('Rejected MFA token during login', exc_info=True)
 
                 if not username:
                     db.close()
-                    status = '<div style="color:red;">Session expired. Please login again.</div>'
-                    return render_template('login.html', login_status=Markup(status))
+                    return render_template('login.html', login_error='Session expired. Please login again.')
 
                 if MFA_AVAILABLE:
                     user_id = db.get_user_id_by_username(username)
@@ -273,17 +385,17 @@ class DispatchServer(object):
                                 db.close()
                                 return resp
                             else:
-                                status = '<div style="color:red;">User disabled</div>'
+                                login_error = 'User disabled'
                         else:
-                            status = '<div style="color:red;">Invalid verification code</div>'
+                            login_error = 'Invalid verification code'
                     else:
-                        status = '<div style="color:red;">MFA configuration error</div>'
+                        login_error = 'MFA configuration error'
                         db.close()
-                        return render_template('login.html', login_status=Markup(status))
+                        return render_template('login.html', login_error=login_error)
                 else:
-                    status = '<div style="color:red;">MFA not available</div>'
+                    login_error = 'MFA not available'
                     db.close()
-                    return render_template('login.html', login_status=Markup(status))
+                    return render_template('login.html', login_error=login_error)
 
                 db.close()
                 # Generate a new MFA token for retry
@@ -292,7 +404,7 @@ class DispatchServer(object):
                     'mfa_pending': True,
                     'exp': datetime.now(timezone.utc) + timedelta(minutes=5)
                 }, config.SECRET_KEY, algorithm='HS256')
-                return render_template('login_mfa.html', login_status=Markup(status), username=username, mfa_token=mfa_token)
+                return render_template('login_mfa.html', login_error=login_error, username=username, mfa_token=mfa_token)
 
             # Standard username/password login
             if db.validate_login(request.form['username'].lower(), request.form['password']):
@@ -307,7 +419,7 @@ class DispatchServer(object):
                         'exp': datetime.now(timezone.utc) + timedelta(minutes=5)
                     }, config.SECRET_KEY, algorithm='HS256')
                     db.close()
-                    return render_template('login_mfa.html', login_status=Markup('<div></div>'), username=username, mfa_token=mfa_token)
+                    return render_template('login_mfa.html', login_error='', username=username, mfa_token=mfa_token)
 
                 user_data = auth.loadUser(db, username)
                 config.log("Web login successful", user_data, request.remote_addr)
@@ -318,7 +430,7 @@ class DispatchServer(object):
                     check_user_login_alert(config.DB_NAME, user_data['id'], user_data['user'], request.remote_addr)
                     reset_failed_logins(username)
                 except Exception:
-                    pass
+                    logging.debug('Login alert check failed', exc_info=True)
 
                 if user_data['role'] > 0:
                     # Check if MFA is required but not enabled for this user
@@ -339,17 +451,17 @@ class DispatchServer(object):
                     db.close()
                     return resp
                 else:
-                    status = '<div style="color:red;">User disabled</div>'
+                    login_error = 'User disabled'
             else:
                 # Check for failed login alerts
                 try:
                     from dispatch.alerts import check_failed_login_alert
                     check_failed_login_alert(config.DB_NAME, request.form['username'].lower(), request.remote_addr)
                 except Exception:
-                    pass
-                status = '<div style="color:red;">Login Failed</div>'
+                    logging.debug('Failed-login alert check failed', exc_info=True)
+                login_error = 'Login Failed'
             db.close()
-        return render_template('login.html', login_status=Markup(status))
+        return render_template('login.html', login_error=login_error)
 
     @app.route('/logout', methods=['GET'])
     def logout():
@@ -368,7 +480,7 @@ class DispatchServer(object):
     @auth.operator_required
     def admin_settings(token):
         db = DispatchDB(current_app.config['db_name'])
-        status_msg = Markup('')
+        status_msg = None
         try:
             if request.method == 'POST':
                 form_type = request.form.get('form_type')
@@ -386,31 +498,31 @@ class DispatchServer(object):
                         settings.get('client_port', 443)
                     )
                     config.log("Admin settings updated", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Admin settings saved.", true);</script>')
+                    status_msg = _page_notice("Admin settings saved.", True)
 
                 elif form_type == 'login_restrictions':
                     db.update_allow_login(request.form['allow_login'])
                     config.log("Login restrictions updated", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Login restrictions saved.", true);</script>')
+                    status_msg = _page_notice("Login restrictions saved.", True)
 
                 elif form_type == 'webhook_settings':
                     webhook_url = request.form.get('webhook_url', '').strip()
                     db.update_webhook_url(webhook_url if webhook_url else None)
                     config.log("Webhook settings updated", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Webhook settings saved.", true);</script>')
+                    status_msg = _page_notice("Webhook settings saved.", True)
 
                 elif form_type == 'mfa_settings':
                     mfa_required = 'mfa_required' in request.form
                     db.set_mfa_required(mfa_required)
                     config.log(f"MFA requirement {'enabled' if mfa_required else 'disabled'}", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("MFA settings saved.", true);</script>')
+                    status_msg = _page_notice("MFA settings saved.", True)
 
                 config.refresh_app_configs(db, current_app)
 
             return render_template('settings/admin.html', token=token, config=current_app.config, status_msg=status_msg)
         except Exception as e:
             logging.error(f"Error updating admin settings: {e}")
-            status_msg = Markup('<script>showNotification("Failed to save settings.", false);</script>')
+            status_msg = _page_notice("Failed to save settings.", False)
             return render_template('settings/admin.html', token=token, config=current_app.config, status_msg=status_msg)
         finally:
             db.close()
@@ -419,7 +531,7 @@ class DispatchServer(object):
     @auth.operator_required
     def client_settings(token):
         db = DispatchDB(current_app.config['db_name'])
-        status_msg = Markup('')
+        status_msg = None
         try:
             if request.method == 'POST':
                 form_type = request.form.get('form_type')
@@ -428,7 +540,7 @@ class DispatchServer(object):
                     client_enabled = 'client_enabled' in request.form
                     db.update_client_enabled(client_enabled)
                     config.log(f"Client interface {'enabled' if client_enabled else 'disabled'}", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Client interface status saved.", true);</script>')
+                    status_msg = _page_notice("Client interface status saved.", True)
 
                 elif form_type == 'network_settings':
                     source_ip = request.form['source_ip']
@@ -444,7 +556,7 @@ class DispatchServer(object):
                         client_port
                     )
                     config.log("Network settings updated", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Network settings saved.", true);</script>')
+                    status_msg = _page_notice("Network settings saved.", True)
 
                 elif form_type == 'response_headers':
                     header_names = request.form.getlist('header_name[]')
@@ -452,7 +564,7 @@ class DispatchServer(object):
                     headers = {name: value for name, value in zip(header_names, header_values) if name and value}
                     db.update_response_headers(headers)
                     config.log("Response headers updated", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Response headers saved.", true);</script>')
+                    status_msg = _page_notice("Response headers saved.", True)
 
                 elif form_type == 'access_control':
                     allow_ip = request.form['allow_ip']
@@ -470,7 +582,7 @@ class DispatchServer(object):
                         db.disable_param_key()
 
                     config.log("Access control updated", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Access control saved.", true);</script>')
+                    status_msg = _page_notice("Access control saved.", True)
 
                 config.refresh_app_configs(db, current_app)
 
@@ -478,7 +590,7 @@ class DispatchServer(object):
             return render_template('settings/client.html', token=token, config=current_app.config, response_headers=response_headers, status_msg=status_msg)
         except Exception as e:
             logging.error(f"Error updating client settings: {e}")
-            status_msg = Markup('<script>showNotification("Failed to save settings.", false);</script>')
+            status_msg = _page_notice("Failed to save settings.", False)
             response_headers = db.get_response_headers()
             return render_template('settings/client.html', token=token, config=current_app.config, response_headers=response_headers, status_msg=status_msg)
         finally:
@@ -488,7 +600,7 @@ class DispatchServer(object):
     @auth.operator_required
     def c2_redirectors(token):
         db = DispatchDB(current_app.config['db_name'])
-        status_msg = Markup('')
+        status_msg = None
         try:
             if request.method == 'POST':
                 form_type = request.form.get('form_type')
@@ -497,7 +609,7 @@ class DispatchServer(object):
                     proxy_enabled = 'proxy_enabled' in request.form
                     db.update_proxy_enabled(proxy_enabled)
                     config.log(f"Reverse proxy {'enabled' if proxy_enabled else 'disabled'}", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Reverse proxy status saved.", true);</script>')
+                    status_msg = _page_notice("Reverse proxy status saved.", True)
                 else:
                     # Convert form data to dictionary {path: redirect}
                     paths = request.form.getlist("path[]")  # Extract paths
@@ -506,8 +618,8 @@ class DispatchServer(object):
 
                     # Update DB
                     db.update_proxy_routes(route_dict)
-                    config.log(f"Reverse proxy routes updated", token, request.remote_addr)
-                    status_msg = Markup('<script>showNotification("Proxy routes saved.", true);</script>')
+                    config.log("Reverse proxy routes updated", token, request.remote_addr)
+                    status_msg = _page_notice("Proxy routes saved.", True)
 
                 config.refresh_app_configs(db, current_app)
 
@@ -515,7 +627,7 @@ class DispatchServer(object):
             return render_template('settings/proxy.html', token=token, routes=routes, config=current_app.config, status_msg=status_msg)
         except Exception as e:
             logging.error(f"Error updating proxy settings: {e}")
-            status_msg = Markup('<script>showNotification("Failed to save proxy settings.", false);</script>')
+            status_msg = _page_notice("Failed to save proxy settings.", False)
             routes = db.load_proxy_routes()
             return render_template('settings/proxy.html', token=token, routes=routes, config=current_app.config, status_msg=status_msg)
         finally:
@@ -569,6 +681,97 @@ class DispatchServer(object):
                 mimetype='application/json'
             )
 
+    @app.route('/settings/activity', methods=['GET'])
+    @auth.operator_required
+    def file_activity(token):
+        """Recent client file requests, with a live stream attached by the page."""
+        query = _activity_query()
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            rows = db.list_file_requests(
+                limit=query['limit'],
+                result=query['result'] or None,
+                ip=query['ip'] or None,
+                search=query['search'] or None,
+            )
+            summary = db.file_request_summary(
+                result=query['result'] or None,
+                ip=query['ip'] or None,
+                search=query['search'] or None,
+            )
+        finally:
+            db.close()
+        return render_template(
+            'settings/activity.html',
+            token=token,
+            config=current_app.config,
+            requests_rows=rows,
+            summary=summary,
+            filters={'result': query['result'], 'ip': query['ip'], 'q': query['search'], 'limit': query['limit']},
+        )
+
+    @app.route('/api/file-requests/stream', methods=['GET'])
+    @auth.operator_required
+    def file_request_stream(token):
+        """Server-Sent Events for new client file requests. One connection, no page reload."""
+        query = _activity_query()
+
+        def generate():
+            db = DispatchDB(current_app.config['db_name'])
+            since = query['since']
+            try:
+                yield 'retry: 2000\n\n'
+                if since <= 0:
+                    rows = db.list_file_requests(
+                        limit=query['limit'],
+                        result=query['result'] or None,
+                        ip=query['ip'] or None,
+                        search=query['search'] or None,
+                    )
+                    summary = db.file_request_summary(
+                        result=query['result'] or None,
+                        ip=query['ip'] or None,
+                        search=query['search'] or None,
+                    )
+                    yield _sse('snapshot', {'requests': rows, 'summary': summary})
+                    if rows:
+                        since = rows[0]['id']
+                polls = 0
+                while True:
+                    fresh = db.list_file_requests_since(
+                        since,
+                        limit=query['limit'],
+                        result=query['result'] or None,
+                        ip=query['ip'] or None,
+                        search=query['search'] or None,
+                    )
+                    if fresh:
+                        for row in fresh:
+                            since = row['id']
+                            yield _sse('request', row, event_id=row['id'])
+                        summary = db.file_request_summary(
+                            result=query['result'] or None,
+                            ip=query['ip'] or None,
+                            search=query['search'] or None,
+                        )
+                        yield _sse('summary', summary)
+                    polls += 1
+                    # Tests consume one poll. The running server keeps the feed open.
+                    if current_app.config.get('TESTING') and polls >= 1:
+                        break
+                    time.sleep(1)
+            finally:
+                db.close()
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',
+            },
+        )
+
     # ===== ALERTS CONFIGURATION ROUTES =====
 
     @app.route('/settings/alerts', methods=['GET'])
@@ -584,6 +787,9 @@ class DispatchServer(object):
         try:
             db = DispatchDB(current_app.config['db_name'])
             alerts = db.get_alerts()
+            for alert in alerts:
+                if alert.get('alert_type') == 'file_download' and alert.get('target_id') is not None:
+                    alert['target_id'] = db.guid_for_file_row(alert['target_id'])
             db.close()
             return Response(response=dumps(alerts), status=200, mimetype='application/json')
         except Exception as e:
@@ -611,7 +817,7 @@ class DispatchServer(object):
                     user = db.get_user_by_id(target_id)
                     description = f"Alert when user '{user.get('username', 'Unknown')}' logs in"
                 elif alert_type == 'file_download' and target_id:
-                    file = db.get_file_by_id(target_id)
+                    file = db.get_file_by_id(str(target_id))
                     description = f"Alert when file '{file.get('filename', 'Unknown')}' is downloaded"
                 elif alert_type == 'failed_logins' and target_value:
                     description = f"Alert after {target_value} failed login attempts"
@@ -620,6 +826,12 @@ class DispatchServer(object):
                 db.close()
 
             db = DispatchDB(current_app.config['db_name'])
+            if alert_type == 'file_download':
+                file = db.get_file_by_id(str(target_id or ''))
+                if not file:
+                    db.close()
+                    return Response(response=dumps({'error': 'File not found'}), status=400, mimetype='application/json')
+                target_id = file['row_id']
             alert_id = db.create_alert(alert_type, target_id, target_value, description)
             db.close()
 
@@ -695,21 +907,22 @@ class DispatchServer(object):
 
     @app.route('/file/upload', methods=['GET', 'POST'])
     @auth.upload_only_required
-    def upload_file(token, status_msg=''):
+    def upload_file(token, status_msg=None):
         if request.method == 'POST':
+            folder_id = request.form.get('folder_id')
             files = request.files.getlist("file")
             if len(files) == 0 or files[0].filename == '':
-                status_msg = Markup('<script>showNotification("No File Selected.", false);</script>')
-                return _render_file_form('files/upload.html', token, status_msg)
-            
+                status_msg = _page_notice("No File Selected.", False)
+                return _render_file_form('files/upload.html', token, status_msg, folder_id=folder_id)
+
             for f in files:
                 db = DispatchDB(current_app.config['db_name'])
                 try:
-                    folder_id = request.form.get('folder_id', type=int)
+                    folder_id_int = request.form.get('folder_id', type=int)
                     if config.is_blocked_filename(f.filename):
-                        status_msg = Markup('<script>showNotification("Uploading .gitignore is not allowed.", false);</script>')
-                        return _render_file_form('files/upload.html', token, status_msg)
-                    target_dir = _ensure_folder_exists(db, folder_id)
+                        status_msg = _page_notice("Uploading .gitignore is not allowed.", False)
+                        return _render_file_form('files/upload.html', token, status_msg, folder_id=folder_id)
+                    target_dir = _ensure_folder_exists(db, folder_id_int)
                     fname, full_path = _safe_file_path(target_dir, f.filename)
                     f.save(full_path)
 
@@ -724,44 +937,48 @@ class DispatchServer(object):
                     # File encryption
                     encrypt = request.form.get('encrypt', '')
 
-                    if not db.upload_file(fname, full_path, alias, token['user'], access, encrypt, folder_id):
+                    if not db.upload_file(
+                        fname, full_path, alias, token['user'], access, encrypt, folder_id_int,
+                        max_downloads=_max_downloads_from_form(),
+                    ):
                         raise Exception("Database Error")
 
                 except RequestEntityTooLarge:
-                    status_msg = Markup('<script>showNotification("File Exceed Max Size.", false);</script>')
-                    return _render_file_form('files/upload.html', token, status_msg)
+                    status_msg = _page_notice("File Exceed Max Size.", False)
+                    return _render_file_form('files/upload.html', token, status_msg, folder_id=folder_id)
 
                 except Exception as e:
-                    status_msg = Markup(f'<script>showNotification("File upload failed: {e}", false);</script>')
-                    return _render_file_form('files/upload.html', token, status_msg)
+                    status_msg = _page_notice(f'File upload failed: {e}', False)
+                    return _render_file_form('files/upload.html', token, status_msg, folder_id=folder_id)
                 finally:
                     db.close()
-            
-            status_msg = Markup('<script>showNotification("File(s) uploaded successfully!");</script>')
-            return redirect(url_for('index'))  
-        return _render_file_form('files/upload.html', token, status_msg)
+
+            return redirect(url_for('index', status='file_uploaded'))
+        return _render_file_form('files/upload.html', token, status_msg, folder_id=request.args.get('folder'))
         
 
     @app.route('/file/create', methods=['GET', 'POST'])
     @auth.upload_only_required
-    def create_file(token, status_msg=''):
+    def create_file(token, status_msg=None):
+        form_error = ''
+        folder_id = request.form.get('folder_id') if request.method == 'POST' else None
         if request.method == 'POST':
-            folder_id = request.form.get('folder_id', type=int)
+            folder_id_int = request.form.get('folder_id', type=int)
             fname = request.form['filename'] if request.form['filename'] != '' else config.gen_filename()
             if config.is_blocked_filename(fname):
-                status_msg = Markup('<script>showNotification("Creating .gitignore is not allowed.", false);</script>')
-                return _render_file_form('files/create.html', token, status_msg)
+                status_msg = _page_notice("Creating .gitignore is not allowed.", False)
+                return _render_file_form('files/create.html', token, status_msg, folder_id=folder_id)
             db = DispatchDB(current_app.config['db_name'])
             try:
-                target_dir = _ensure_folder_exists(db, folder_id)
+                target_dir = _ensure_folder_exists(db, folder_id_int)
                 fname, full_path = _safe_file_path(target_dir, fname)
 
                 if request.form['file_content']:
                     with open(full_path, 'w') as f:
                         f.write(request.form['file_content'])
                 else:
-                    status_msg = Markup('<div style="color:red;margin-bottom:8px;">No content provided.</div>')
-                    return _render_file_form('files/create.html', token, status_msg)
+                    form_error = 'No content provided.'
+                    return _render_file_form('files/create.html', token, form_error=form_error, folder_id=folder_id)
 
                 access_id = request.form.get('access', type=int)
                 access = access_id if access_id is not None and access_id in [1, 2, 3] else 3
@@ -770,18 +987,20 @@ class DispatchServer(object):
                 alias = config.alias_collision_check(db, alias)
                 encrypt = request.form.get('encrypt', '')
 
-                if db.upload_file(fname, full_path, alias, token['user'], access, encrypt, folder_id) is not False:
+                if db.upload_file(fname, full_path, alias, token['user'], access, encrypt, folder_id_int) is not False:
                     return redirect(url_for('index'))
-                status_msg = Markup('<script>showNotification("File upload failed.", false);</script>')
+                status_msg = _page_notice("File upload failed.", False)
             finally:
                 db.close()
-        return _render_file_form('files/create.html', token, status_msg)
+        return _render_file_form('files/create.html', token, status_msg, form_error=form_error, folder_id=folder_id)
 
     @app.route('/file/download', methods=['GET', 'POST'])
     @auth.upload_only_required
-    def download_file(token, status_msg=''):
+    def download_file(token, status_msg=None):
+        form_error = ''
+        folder_id = request.form.get('folder_id') if request.method == 'POST' else None
         if request.method == 'POST':
-            folder_id = request.form.get('folder_id', type=int)
+            folder_id_int = request.form.get('folder_id', type=int)
             if request.form['filename']:
                 fname = request.form['filename']
             else:
@@ -789,16 +1008,18 @@ class DispatchServer(object):
                 fname = os.path.basename(u.path)
 
             if config.is_blocked_filename(fname):
-                status_msg = Markup('<script>showNotification("Creating .gitignore is not allowed.", false);</script>')
-                return _render_file_form('files/download.html', token, status_msg)
+                status_msg = _page_notice("Creating .gitignore is not allowed.", False)
+                return _render_file_form('files/download.html', token, status_msg, folder_id=folder_id)
             db = DispatchDB(current_app.config['db_name'])
             try:
-                target_dir = _ensure_folder_exists(db, folder_id)
+                target_dir = _ensure_folder_exists(db, folder_id_int)
                 fname, full_path = _safe_file_path(target_dir, fname)
 
                 if not config.download_file(request.form['url'], full_path):
-                    status_msg = Markup('<div style="color:red;margin-bottom:8px;">Failed to download file.</div>')
-                    return _render_file_form('files/download.html', token, status_msg)
+                    form_error = 'Failed to download file.'
+                    return _render_file_form(
+                        'files/download.html', token, form_error=form_error, folder_id=folder_id
+                    )
 
                 access_id = request.form.get('access', type=int)
                 access = access_id if access_id is not None and access_id in [1, 2, 3] else 3
@@ -807,22 +1028,22 @@ class DispatchServer(object):
                 alias = config.alias_collision_check(db, alias)
                 encrypt = request.form.get('encrypt', '')
 
-                if db.upload_file(fname, full_path, alias, token['user'], access, encrypt, folder_id) is not False:
+                if db.upload_file(fname, full_path, alias, token['user'], access, encrypt, folder_id_int) is not False:
                     return redirect(url_for('index'))
-                status_msg = Markup('<script>showNotification("File upload failed.", false);</script>')
+                status_msg = _page_notice("File upload failed.", False)
             finally:
                 db.close()
-        return _render_file_form('files/download.html', token, status_msg)
+        return _render_file_form('files/download.html', token, status_msg, form_error=form_error, folder_id=folder_id)
 
     @app.route('/file/delete', methods=['GET'])
     @auth.operator_required
     def delete_file(token):
         if 'id' in request.args.keys():
-            id = request.args.get('id', type=int)
+            file_guid = request.args.get('id', '')
             db = DispatchDB(current_app.config['db_name'])
-            data = db.get_file_by_id(id)
+            data = db.get_file_by_id(file_guid)
             if data and os.path.exists(data['file_path']):
-                db.del_file_by_id(id)
+                db.del_file_by_id(data['id'])
                 os.remove(data['file_path'])
                 config.log(f"Deleted file: {data['filename']}", token, request.remote_addr)
                 db.close()
@@ -836,7 +1057,10 @@ class DispatchServer(object):
     def edit_file(token):
         if request.method == 'POST':
             db = DispatchDB(current_app.config['db_name'])
-            data = db.get_file_by_id(request.form.get('id', type=int))
+            data = db.get_file_by_id(request.form.get('id', ''))
+            if not data:
+                db.close()
+                return redirect(url_for('index'))
             og_file_path = data['file_path']
             folder_id = data.get('folder_id')
             folder_dir = _ensure_folder_exists(db, folder_id)
@@ -869,18 +1093,22 @@ class DispatchServer(object):
             elif full_path != og_file_path:
                 os.rename(og_file_path, full_path)
 
-            db.update_file_by_id(request.form['id'], fname, full_path, alias, token['user'], access, encrypt, folder_id)
+            db.update_file_by_id(data['id'], fname, full_path, alias, token['user'], access, encrypt, folder_id)
+            db.set_download_limit(data['id'], _max_downloads_from_form())
             db.close()
             return redirect(url_for('index'))
 
         if 'id' in request.args.keys():
             db = DispatchDB(current_app.config['db_name'])
-            data = db.get_file_by_id(request.args.get('id', type=int))
+            data = db.get_file_by_id(request.args.get('id', ''))
             db.close()
-            with open(data['file_path'], 'r') as f:
+            if not data:
+                return redirect(url_for('index'))
+            with open(data['file_path']) as f:
                 try:
                     content = f.read()
-                except:
+                except Exception:
+                    logging.debug('File is not valid text; skipping editor preview', exc_info=True)
                     content = False
                 return render_template('files/edit.html', token=token, data=data, content=str(content))
         return redirect(url_for('index'))
@@ -892,7 +1120,7 @@ class DispatchServer(object):
     @auth.admin_required
     def users(token):
         status = request.args.get('status')
-        status_msg = Markup('')
+        status_msg = None
 
         if request.method == 'POST':
             form_type = request.form.get('form_type')
@@ -903,16 +1131,16 @@ class DispatchServer(object):
                 config.refresh_app_configs(db, current_app)
                 db.close()
                 config.log(f"MFA requirement {'enabled' if mfa_required else 'disabled'}", token, request.remote_addr)
-                status_msg = Markup('<script>showNotification("MFA settings saved.", true);</script>')
+                status_msg = _page_notice("MFA settings saved.", True)
 
         if status == 'user_added':
-            status_msg = Markup('<script>showNotification("User added successfully.", true);</script>')
+            status_msg = _page_notice("User added successfully.", True)
         elif status == 'user_deleted':
-            status_msg = Markup('<script>showNotification("User deleted successfully.", true);</script>')
+            status_msg = _page_notice("User deleted successfully.", True)
         elif status == 'user_delete_failed':
-            status_msg = Markup('<script>showNotification("Failed to delete user.", false);</script>')
+            status_msg = _page_notice("Failed to delete user.", False)
         elif status == 'last_admin':
-            status_msg = Markup('<script>showNotification("Cannot delete the last administrator account.", false);</script>')
+            status_msg = _page_notice("Cannot delete the last administrator account.", False)
         return render_template('users/list.html', token=token, config=current_app.config, status_msg=status_msg)
 
     @app.route('/user/delete', methods=['GET'])
@@ -960,11 +1188,11 @@ class DispatchServer(object):
                         config.log(f'New user created: {escape(request.form.get("username"))}', token, request.remote_addr)
                         return redirect(url_for('users', status='user_added'))
                     else:
-                        status_msg = Markup('<script>showNotification("Invalid Permissions.", false);</script>')
+                        status_msg = _page_notice("Invalid Permissions.", False)
                 else:
-                    status_msg = Markup('<script>showNotification("Invalid Inputs.", false);</script>')
+                    status_msg = _page_notice("Invalid Inputs.", False)
             else:
-                status_msg = Markup('<script>showNotification("Invalid Username.", false);</script>')
+                status_msg = _page_notice("Invalid Username.", False)
         return render_template('users/add.html', token=token, config=current_app.config, user=False, status_msg=status_msg)
 
     @app.route('/user/edit', methods=['GET', 'POST'])
@@ -987,13 +1215,13 @@ class DispatchServer(object):
                     if password == confirm_password and config.validate_password(password):
                         db.update_user_password_by_id(user_id, password)
                         config.log(f'Changed password for {user["username"]}', token, request.remote_addr)
-                        status_msg = Markup('<script>showNotification("User updated successfully.");</script>')
+                        status_msg = _page_notice("User updated successfully.")
                     else:
-                        status_msg = Markup('<script>showNotification("Invalid Inputs.", false);</script>')
+                        status_msg = _page_notice("Invalid Inputs.", False)
                 else:
-                    status_msg = Markup('<script>showNotification("User updated successfully.");</script>')
+                    status_msg = _page_notice("User updated successfully.")
             else:
-                status_msg = Markup('<script>showNotification("Invalid Permissions.", false);</script>')
+                status_msg = _page_notice("Invalid Permissions.", False)
             db.close()
             return render_template('users/add.html', token=token, user=user, status_msg=status_msg)
 
@@ -1007,7 +1235,7 @@ class DispatchServer(object):
         return redirect(url_for('users'))
 
     @app.route('/api/users/list', methods=['GET'])
-    @auth.admin_required
+    @auth.operator_required
     def api_list_users(token):
         """
         Access: Private
@@ -1036,8 +1264,8 @@ class DispatchServer(object):
                 db.update_key_by_id(int(j['id']), k)
                 config.log(f'Generated API Key for {data["username"]}', token, request.remote_addr)
                 return Response(response=dumps({'key': k}), status=200, mimetype='application/json')
-        except:
-            pass
+        except Exception:
+            logging.debug('Failed to generate API key', exc_info=True)
         finally:
             db.close()
         return abort(403)
@@ -1184,13 +1412,13 @@ class DispatchServer(object):
             db.close()
             return render_template('users/mfa.html', token=token, user=user, mfa_available=False,
                                    mfa_status={'mfa_enabled': False, 'has_secret': False},
-                                   status_msg=Markup('<script>showNotification("MFA not available. Install pyotp and qrcode packages.", false);</script>'))
+                                   status_msg=_page_notice("MFA not available. Install pyotp and qrcode packages.", False))
 
         mfa_status = db.get_user_mfa_status(user_id)
         db.close()
 
         return render_template('users/mfa.html', token=token, user=user, mfa_status=mfa_status,
-                               mfa_available=True, status_msg=Markup(''))
+                               mfa_available=True, status_msg=None)
 
     @app.route('/api/mfa/setup', methods=['POST'])
     @auth.login_required
@@ -1352,71 +1580,104 @@ class DispatchServer(object):
         return render_template('users/mfa_enroll.html', token=token, user=user,
                                mfa_status=mfa_status, mfa_available=True)
 
+    @app.route('/api/files/listing', methods=['GET'])
+    @auth.upload_only_required
+    def api_browser_file_listing(token):
+        """Rich file listing for the signed-in admin UI.
+
+        API keys are rejected here so a logged request cannot capture paths,
+        uploader names, or host settings. Automation should call /api/files/list.
+        """
+        if _session_user() is None:
+            return Response(
+                response=dumps({'error': 'session required'}),
+                status=403,
+                mimetype='application/json',
+            )
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            files = _files_visible_to(db, token.get('role', 0), include_size=True)
+        finally:
+            db.close()
+        return Response(response=dumps(files), status=200, mimetype='application/json')
+
     @app.route('/api/files/list', methods=['GET'])
     @auth.upload_only_required
     def api_list_files(token):
+        """Minimal file list for API-key automation.
+
+        Returns id, filename, alias, size, access, and download counters only.
+        """
         db = DispatchDB(current_app.config['db_name'])
-        all_files = db.list_files(include_size=True)
-        all_folders = db.list_folders()
-        user_role = token.get('role', 0)
+        try:
+            files = _files_visible_to(db, token.get('role', 0), include_size=True)
+        finally:
+            db.close()
+        summary = [_public_file_summary(item) for item in files]
+        return Response(response=dumps(summary), status=200, mimetype='application/json')
 
-        # Create folder access map (folder access = minimum role required)
-        folder_access_map = {folder['id']: folder['access'] for folder in all_folders}
-
-        # Filter files based on permissions
-        filtered_files = []
-        for file in all_files:
-            # Check if file is in a folder
-            folder_id = file.get('folder_id')
-
-            if folder_id:
-                # File is in a folder - check folder access (role-based)
-                # Folder access levels: 2=Upload Only, 3=Operator, 4=Administrator
-                folder_access = folder_access_map.get(folder_id, 2)
-
-                # User must have role >= folder access level to see files in that folder
-                if not _can_access_folder(user_role, folder_access):
-                    continue
-
-            # File access levels: 1=Public, 2=Public Once, 3=Private
-            # Public (1) and Public Once (2) are accessible to all authenticated users
-            # Private (3) requires Operator (3) or higher
-            file_access = file.get('access', 3)
-            if file_access == 3 and user_role < 3:
-                continue
-
-            filtered_files.append(file)
-
-        db.close()
-        return Response(response=dumps(filtered_files), status=200, mimetype='application/json')
+    @app.route('/api/files/revision', methods=['GET'])
+    @auth.upload_only_required
+    def api_files_revision(token):
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            revision = db.file_listing_revision()
+        finally:
+            db.close()
+        return Response(response=dumps({'revision': revision}), status=200, mimetype='application/json')
     
     @app.route('/api/files/minimal-list', methods=['GET'])
     @auth.upload_only_required
     def api_minimal_list_files(token):
-        # Minimal file listing for low priv users via api
+        """Older alias of the minimal API-key list. Same fields as /api/files/list."""
         db = DispatchDB(current_app.config['db_name'])
-        data = db.list_files()
-        db.close()
-        minimal = [{
-                "filename": item["filename"],
-                "alias": item["alias"],
-                "size": item["file_size"],
-        }for item in data]
-        return Response(response=dumps(minimal), status=200, mimetype='application/json')
+        try:
+            files = _files_visible_to(db, token.get('role', 0), include_size=True)
+        finally:
+            db.close()
+        summary = [_public_file_summary(item) for item in files]
+        return Response(response=dumps(summary), status=200, mimetype='application/json')
 
     @app.route('/api/files/update-access', methods=['POST'])
     @auth.operator_required
     def api_update_file_access(token):
         try:
-            j = request.get_json(force=True)
-            if int(j['id']) and int(j['access']) in [1, 2, 3]:
-                db = DispatchDB(current_app.config['db_name'])
-                db.update_access_by_id(int(j['id']), int(j['access']))
-                db.close()
-                return Response(response=dumps({'200': 'Success'}), status=200, mimetype='application/json')
-        except:
-            pass
-        return abort(403)
+            payload = request.get_json(force=True)
+            file_guid = payload.get('id')
+            access = int(payload.get('access'))
+        except (TypeError, ValueError):
+            return abort(400)
+        if not isinstance(file_guid, str) or access not in (1, 2, 3):
+            return abort(403)
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            updated = db.update_access_by_id(file_guid, access)
+        finally:
+            db.close()
+        if not updated:
+            return abort(404)
+        return Response(response=dumps({'200': 'Success'}), status=200, mimetype='application/json')
+
+    @app.route('/api/files/download-limit', methods=['POST'])
+    @auth.operator_required
+    def api_set_download_limit(token):
+        """Set a file's max downloads. 0 means unlimited."""
+        try:
+            payload = request.get_json(force=True)
+            file_guid = payload.get('id')
+            limit = int(payload.get('max_downloads'))
+        except (TypeError, ValueError):
+            return abort(400)
+        if not isinstance(file_guid, str) or limit < 0:
+            return abort(400)
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            updated = db.set_download_limit(file_guid, limit)
+        finally:
+            db.close()
+        if not updated:
+            return abort(404)
+        return Response(response=dumps({'200': 'Success'}), status=200, mimetype='application/json')
 
     @app.route('/api/file/upload', methods=['POST'])
     @auth.upload_only_required
@@ -1453,12 +1714,12 @@ class DispatchServer(object):
                 if db.upload_file(fname, full_path, alias, token['user'], access, encrypt, folder_id) is not False:
                     return Response(response=dumps({'url': alias_url}), status=200, mimetype='application/json')
             except Exception:
-                pass
+                logging.debug('API file upload failed', exc_info=True)
             finally:
                 try:
                     db.close()
                 except Exception:
-                    pass
+                    logging.debug('Failed to close database after API upload', exc_info=True)
         return abort(403)
 
     @app.route('/api/files/param-key', methods=['GET'])
@@ -1478,6 +1739,10 @@ class DispatchServer(object):
     @auth.operator_required
     def api_reload_files(token):
         """Rescan disk and reconcile with database"""
+        now = time.time()
+        if now - _last_disk_reload['at'] < 45:
+            return Response(response=dumps({'skipped': True}), status=200, mimetype='application/json')
+        _last_disk_reload['at'] = now
         db = DispatchDB(current_app.config['db_name'])
         upload_dir = config.FILE_PATH
         os.makedirs(upload_dir, exist_ok=True)
@@ -1497,7 +1762,7 @@ class DispatchServer(object):
         added_folders = 0
         removed_folders = 0
 
-        for root, dirs, files in os.walk(upload_dir):
+        for root, _dirs, files in os.walk(upload_dir):
             rel_dir = os.path.relpath(root, upload_dir)
             rel_dir = '' if rel_dir == '.' else rel_dir
             parent_id = None
@@ -1718,7 +1983,7 @@ class DispatchServer(object):
                 return abort(400)
 
             db = DispatchDB(current_app.config['db_name'])
-            file_data = db.get_file_by_id(int(file_id))
+            file_data = db.get_file_by_id(str(file_id))
             if not file_data:
                 db.close()
                 return abort(404)
@@ -1732,7 +1997,7 @@ class DispatchServer(object):
             db.close()
 
             if result is not False:
-                config.log(f"Moved file ID {file_id} to folder {folder_id}", token, request.remote_addr)
+                config.log(f"Moved file {file_data['id']} to folder {folder_id}", token, request.remote_addr)
                 return Response(response=dumps({'message': 'File moved'}), status=200, mimetype='application/json')
         except Exception as e:
             logging.debug(f"Error moving file: {e}")
@@ -1763,12 +2028,14 @@ class DispatchServer(object):
             logging.debug(f"Error updating folder access: {e}")
         return abort(403)
 
-    @app.route('/file/get/<int:file_id>', methods=['GET'])
+    @app.route('/file/get/<file_id>', methods=['GET'])
     @auth.login_required
     def admin_download_file_by_id(token, file_id):
         db = DispatchDB(current_app.config['db_name'])
         try:
             file_data = db.get_file_by_id(file_id)
+            if not file_data:
+                return abort(404)
             folder_access_map = {folder['id']: folder['access'] for folder in db.list_folders()}
             if not _can_access_admin_file(token, file_data, folder_access_map):
                 return abort(403)
@@ -1776,10 +2043,33 @@ class DispatchServer(object):
             config.log(f'Admin file access: {file_data["filename"]}', token, request.remote_addr)
             try:
                 from dispatch.alerts import check_file_download_alert, check_ip_activity_alert
-                check_file_download_alert(current_app.config['db_name'], file_data['id'], file_data['filename'], token.get('user'), request.remote_addr)
+                check_file_download_alert(current_app.config['db_name'], file_data['row_id'], file_data['filename'], token.get('user'), request.remote_addr)
                 check_ip_activity_alert(current_app.config['db_name'], request.remote_addr, 'download', f'Admin file: {file_data["filename"]}')
             except Exception:
-                pass
+                logging.debug('Admin download alert failed', exc_info=True)
+            return _serve_admin_file(file_data['file_path'], file_data['filename'], encrypt=file_data['encrypt'])
+        finally:
+            db.close()
+
+    @app.route('/file/get/name/<path:filename>', methods=['GET'])
+    @auth.login_required
+    def admin_download_file_by_name(token, filename):
+        """Download a hosted file by its filename. Used by API keys as well as the UI."""
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            file_data = db.get_file_by_filename(filename)
+            if not file_data:
+                return abort(404)
+            folder_access_map = {folder['id']: folder['access'] for folder in db.list_folders()}
+            if not _can_access_admin_file(token, file_data, folder_access_map):
+                return abort(403)
+            config.log(f'Admin file access: {file_data["filename"]}', token, request.remote_addr)
+            try:
+                from dispatch.alerts import check_file_download_alert, check_ip_activity_alert
+                check_file_download_alert(current_app.config['db_name'], file_data['row_id'], file_data['filename'], token.get('user'), request.remote_addr)
+                check_ip_activity_alert(current_app.config['db_name'], request.remote_addr, 'download', f'Admin file: {file_data["filename"]}')
+            except Exception:
+                logging.debug('Admin download alert failed', exc_info=True)
             return _serve_admin_file(file_data['file_path'], file_data['filename'], encrypt=file_data['encrypt'])
         finally:
             db.close()
@@ -1799,13 +2089,31 @@ class DispatchServer(object):
             config.log(f'Admin file access: {file_data["filename"]}', token, request.remote_addr)
             try:
                 from dispatch.alerts import check_file_download_alert, check_ip_activity_alert
-                check_file_download_alert(current_app.config['db_name'], file_data['id'], file_data['filename'], token.get('user'), request.remote_addr)
+                check_file_download_alert(current_app.config['db_name'], file_data['row_id'], file_data['filename'], token.get('user'), request.remote_addr)
                 check_ip_activity_alert(current_app.config['db_name'], request.remote_addr, 'download', f'Admin file: {file_data["filename"]}')
             except Exception:
-                pass
+                logging.debug('Admin download alert failed', exc_info=True)
             return _serve_admin_file(file_data['file_path'], file_data['filename'], encrypt=file_data['encrypt'])
         finally:
             db.close()
+
+    @app.route('/api/v1/health', methods=['GET', 'POST'])
+    def admin_covert_health():
+        """Covert upload and download on the admin listener.
+
+        Same contract as the client listener: fetch= downloads, otherwise
+        upload. Upload requires an upload-capable session or API key.
+        """
+        if request.values.get('fetch'):
+            return _covert_fetch()
+        token = _upload_token()
+        if not token:
+            return Response(
+                response=dumps({'error': 'auth required'}),
+                status=401,
+                mimetype='application/json',
+            )
+        return _covert_upload_body(token)
 
     #
     # Script Runner Management
@@ -1813,7 +2121,7 @@ class DispatchServer(object):
     @app.route('/scripts', methods=['GET'])
     @auth.operator_required
     def scripts_page(token):
-        if current_app.config.get('disable_exec'):
+        if not current_app.config.get('script_interface'):
             return abort(403)
         has_webhook = False
         try:
@@ -1827,7 +2135,7 @@ class DispatchServer(object):
     @app.route('/api/scripts/list', methods=['GET'])
     @auth.operator_required
     def api_list_scripts(token):
-        if current_app.config.get('disable_exec'):
+        if not current_app.config.get('script_interface'):
             return abort(403)
         db = DispatchDB(current_app.config['db_name'])
         scripts = db.list_scripts()
@@ -1838,7 +2146,7 @@ class DispatchServer(object):
     @auth.operator_required
     def api_create_script(token):
         try:
-            if current_app.config.get('disable_exec'):
+            if not current_app.config.get('script_interface'):
                 return abort(403)
             j = request.get_json(force=True)
             name = j.get('name', '').strip()
@@ -1877,7 +2185,7 @@ class DispatchServer(object):
     @auth.operator_required
     def api_update_script(token):
         try:
-            if current_app.config.get('disable_exec'):
+            if not current_app.config.get('script_interface'):
                 return abort(403)
             j = request.get_json(force=True)
             script_id = j.get('id')
@@ -1917,7 +2225,7 @@ class DispatchServer(object):
     @auth.operator_required
     def api_delete_script(token):
         try:
-            if current_app.config.get('disable_exec'):
+            if not current_app.config.get('script_interface'):
                 return abort(403)
             j = request.get_json(force=True)
             script_id = j.get('id')
@@ -1942,7 +2250,7 @@ class DispatchServer(object):
     @auth.operator_required
     def api_execute_script(token):
         try:
-            if current_app.config.get('disable_exec'):
+            if not current_app.config.get('script_interface'):
                 return abort(403)
             j = request.get_json(force=True)
             script_id = j.get('id')
@@ -2042,8 +2350,8 @@ class DispatchServer(object):
                                 notify_plain=bool(script.get('notify_plain', 0)),
                                 notify_plain_no_codeblock=bool(script.get('notify_plain_no_codeblock', 0))
                             )
-                except:
-                    pass
+                except Exception:
+                    logging.debug('Failed to send script failure notification', exc_info=True)
             return Response(response=dumps({
                 'success': False,
                 'output': error_output,
@@ -2108,6 +2416,7 @@ class DispatchServer(object):
     #
     @app.after_request
     def add_header(response):
+        auth.apply_refreshed_token(response)
         response.headers['X-Frame-Options'] = "deny"
         # Apply custom response headers from config
         custom_headers = current_app.config.get('response_headers', {})

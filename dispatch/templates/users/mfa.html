@@ -12,7 +12,8 @@
     .qr-container {
         text-align: center;
         padding: 20px;
-        background: #f8f9fa;
+        background: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
         border-radius: 8px;
         margin: 20px 0;
     }
@@ -61,7 +62,8 @@
     .setup-step {
         margin-bottom: 20px;
         padding: 15px;
-        background: #f8f9fa;
+        background: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
         border-radius: 8px;
         border-left: 4px solid #42B41C;
     }
@@ -180,7 +182,7 @@
 {% endblock %}
 
 {% block html_footer %}
-{{ status_msg }}
+{% include "_notice.html" %}
 <script>
     const userId = {{ user.id }};
 

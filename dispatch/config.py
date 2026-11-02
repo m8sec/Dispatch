@@ -6,13 +6,13 @@ import re
 import sys
 import base64
 import logging
+import secrets
 import ipaddress
 import socket
 from os import path
 from requests import get
 from OpenSSL import crypto
 from datetime import datetime
-from random import choice, randint, shuffle
 from string import ascii_letters, digits, punctuation, ascii_uppercase, ascii_lowercase
 logger = logging.getLogger('dispatch-logger')
 
@@ -42,8 +42,8 @@ def generate_ssl_cert(cert_path, key_path, country="US", cn="Dispatch", org="Dis
         with open(cert_path, 'wb') as cert_file:
             cert_file.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
         return True
-    except:
-        pass
+    except Exception:
+        logging.debug('SSL certificate generation failed', exc_info=True)
     return False
 
 
@@ -57,9 +57,14 @@ def get_file_extension(file_name):
     return extension
 
 
+def _rand_int(low, high):
+    """Inclusive integer range from the secrets generator."""
+    return low + secrets.randbelow(high - low + 1)
+
+
 def gen_alias(extension=''):
     # Generates the external alias of filename if not provided during upload
-    return gen_random_string(randint(6, 9)) + extension
+    return gen_random_string(_rand_int(6, 9)) + extension
 
 
 def get_timestamp():
@@ -67,7 +72,8 @@ def get_timestamp():
 
 
 def gen_random_string(length=6):
-    return ''.join([choice(ascii_letters + digits) for x in range(length)])
+    alphabet = ascii_letters + digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
 def _load_secret_key():
@@ -77,19 +83,19 @@ def _load_secret_key():
 
     secret_path = path.join(path.dirname(path.realpath(__file__)), 'data', 'mfa_secret.key')
     try:
-        with open(secret_path, 'r', encoding='utf-8') as secret_file:
+        with open(secret_path, encoding='utf-8') as secret_file:
             persisted_secret = secret_file.read().strip()
             if persisted_secret:
                 return persisted_secret
     except FileNotFoundError:
-        pass
+        persisted_secret = ''  # first run has no key file yet
     except OSError:
         logger.warning('Unable to read persisted Dispatch secret key', exc_info=True)
 
     persisted_secret = (
-        f'{gen_random_string(randint(4, 8))}-'
-        f'{gen_random_string(randint(8, 10))}-'
-        f'{gen_random_string(randint(4, 8))}'
+        f'{gen_random_string(_rand_int(4, 8))}-'
+        f'{gen_random_string(_rand_int(8, 10))}-'
+        f'{gen_random_string(_rand_int(4, 8))}'
     )
     try:
         os.makedirs(path.dirname(secret_path), exist_ok=True)
@@ -150,33 +156,37 @@ def get_file_size(file_path):
             size = file_size / 1024 ** exponent[unit]
             if int(size) > 0 or unit == 'bytes':
                 return f'{round(size, 1)} {unit}'
-    except:
+    except Exception:
+        logging.debug('Unable to read file size for %s', file_path, exc_info=True)
         return "n/a"
 
 
 def download_file(source, output, timeout=5):
     try:
         f = open(output, 'wb+')
-        f.write(get(source, verify=False, timeout=timeout).content)
+        # Operators pull from internal hosts that often use private certificates.
+        f.write(get(source, verify=False, timeout=timeout).content)  # noqa: S501
         f.close()
         if path.exists(output):
             return True
-    except:
-        pass
+    except Exception:
+        logging.debug('Failed to download %s', source, exc_info=True)
     return False
 
 
 def gen_param_key():
     # Rotate the param location
-    k = gen_random_string(randint(1, 2))
-    v = gen_random_string(randint(6, 9))
+    k = gen_random_string(_rand_int(1, 2))
+    v = gen_random_string(_rand_int(6, 9))
     return f'{k}={v}'
 
 
 def gen_api_key():
-    return '{}-{}-{}'.format(gen_random_string(randint(8, 10)),
-                             gen_random_string(randint(12, 14)),
-                             gen_random_string(randint(12, 14)))
+    return (
+        f'{gen_random_string(_rand_int(8, 10))}-'
+        f'{gen_random_string(_rand_int(12, 14))}-'
+        f'{gen_random_string(_rand_int(12, 14))}'
+    )
 
 
 def validate_password(password):
@@ -236,11 +246,12 @@ def allowlist_match(allow_list, client_ip, host=None):
                 if ip_obj in ipaddress.ip_network(item, strict=False):
                     return True
             except ValueError:
-                pass
+                logging.debug('Ignoring invalid allowlist network %s', item, exc_info=True)
             continue
         try:
             resolved = socket.getaddrinfo(item, None)
         except Exception:
+            logging.debug('Allowlist hostname lookup failed for %s', item, exc_info=True)
             continue
         for res in resolved:
             addr = res[4][0]
@@ -258,17 +269,22 @@ def generate_password(length=10):
     lowercase_letters = ascii_lowercase
     numbers = digits
     special_characters = punctuation
-    password = choice(uppercase_letters) + choice(numbers) + choice(special_characters)+ choice(lowercase_letters)
+    rng = secrets.SystemRandom()
+    password = (
+        rng.choice(uppercase_letters)
+        + rng.choice(numbers)
+        + rng.choice(special_characters)
+        + rng.choice(lowercase_letters)
+    )
 
     remaining_length = length - 4
     for _ in range(remaining_length):
         characters = uppercase_letters + lowercase_letters + numbers + special_characters
-        password += choice(characters)
+        password += rng.choice(characters)
 
     password_list = list(password)
-    shuffle(password_list)
-    password = ''.join(password_list)
-    return password
+    rng.shuffle(password_list)
+    return ''.join(password_list)
 
 
 def refresh_app_configs(db, app):
@@ -294,8 +310,8 @@ def refresh_app_configs(db, app):
     app.config['MAX_CONTENT_LENGTH'] = s['max_file_size']
     app.config['param_rotation'] = int(s['param_rotation'])
     app.config['mfa_required'] = db.get_mfa_required()
-    if 'disable_exec' not in app.config:
-        app.config['disable_exec'] = False
+    if 'script_interface' not in app.config:
+        app.config['script_interface'] = False
 
 
 def setup_debug_logger():
@@ -345,8 +361,8 @@ def log(data, user=False, remote_ip=None, level='INFO'):
 def dispatch_native_encrypt(data, password):
     data_bytes = data   # already in bytes format
     key_bytes = password.encode("utf-8")
-    l = len(key_bytes)
-    encrypted = bytes((data_bytes[i] ^ key_bytes[i % l]) for i in range(len(data_bytes)))
+    key_len = len(key_bytes)
+    encrypted = bytes((data_bytes[i] ^ key_bytes[i % key_len]) for i in range(len(data_bytes)))
     return base64.b64encode(encrypted)  # Sent by server in byte format
 
 

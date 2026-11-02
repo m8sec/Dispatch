@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dispatch-server"
+version = "0.2.4"
+description = "Operational security server for controlled payload delivery"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "flask==3.1.3",
+    "PyJWT==2.7.0",
+    "gevent==26.9.0",
+    "requests==2.34.2",
+    "MarkupSafe==2.1.5",
+    "pyOpenSSL==26.4.0",
+    "pyotp==2.10.0",
+    "qrcode[pil]==8.2",
+    "pillow==13.0.0",
+]
+
+[project.scripts]
+dispatch-server = "dispatch.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["dispatch*"]
+
+[tool.setuptools.package-data]
+dispatch = ["templates/**/*", "static/**/*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+extend-exclude = [
+    "dispatch/static",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "S", "UP"]
+# The existing modules use long SQL and markup lines. Wrapping them would be
+# churn without changing behavior, so line length stays out of the gate.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# gevent's monkey patch has to run before the standard library imports.
+"dispatch-server.py" = ["E402"]
+# gevent must be patched before the server imports.
+"dispatch/cli.py" = ["E402"]
+# Tests assert outcomes and use fixed credentials that never leave the test process.
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

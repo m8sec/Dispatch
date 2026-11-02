@@ -1,7 +1,22 @@
 import hashlib
 import logging
+import re
+import uuid
 from dispatch import config
 from sqlite3 import connect
+
+_FILE_GUID_RE = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+    re.IGNORECASE,
+)
+
+
+def new_file_guid():
+    return str(uuid.uuid4())
+
+
+def is_file_guid(value):
+    return isinstance(value, str) and bool(_FILE_GUID_RE.match(value.strip()))
 
 #
 # primary hashing function for DB passwords
@@ -21,8 +36,8 @@ class SqliteDB:
     def close(self):
         try:
             self.conn.close()
-        except:
-            pass
+        except Exception:
+            logging.debug('Ignoring database close error', exc_info=True)
 
     def exec(self, query, args=()):
         try:
@@ -84,9 +99,10 @@ class DispatchDB(SqliteDB):
         "totp_secret" TEXT DEFAULT NULL,
         "mfa_enabled" INTEGER DEFAULT 0);''',
 
-        '''INSERT OR IGNORE INTO users 
-        (id, username, password, role) 
-        VALUES (1, "{}", "{}", 4);'''.format(config.DEFAULT_USER, gen_password_hash(config.DEFAULT_PWD)),
+        # Default admin seed uses config constants, not request input.
+        f'''INSERT OR IGNORE INTO users
+        (id, username, password, role)
+        VALUES (1, "{config.DEFAULT_USER}", "{gen_password_hash(config.DEFAULT_PWD)}", 4);''',  # noqa: S608
 
         '''CREATE TABLE IF NOT EXISTS folders (
         "id" INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,6 +115,7 @@ class DispatchDB(SqliteDB):
 
         '''CREATE TABLE IF NOT EXISTS files (
         "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+        "guid" TEXT UNIQUE,
         "filename" TEXT UNIQUE NOT NULL,
         "file_path" TEXT UNIQUE NOT NULL,
         "access" INTEGER DEFAULT 3,
@@ -107,9 +124,11 @@ class DispatchDB(SqliteDB):
         "upload_date" DATETIME DEFAULT (datetime('now','localtime')),
         "uploaded_by" TEXT NOT NULL,
         "folder_id" INTEGER DEFAULT NULL,
+        "max_downloads" INTEGER,
+        "download_count" INTEGER DEFAULT 0,
         FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL);''',
 
-        '''CREATE TABLE IF NOT EXISTS settings (
+        f'''CREATE TABLE IF NOT EXISTS settings (
         "id" INTEGER PRIMARY KEY AUTOINCREMENT,
         "redirect_url" TEXT,
         "source_ip" TEXT,
@@ -120,9 +139,9 @@ class DispatchDB(SqliteDB):
         "server_header" TEXT,
         "param_rotation" BOOLEAN DEFAULT 0,
         "param_key" TEXT DEFAULT 's=1234',
-        "max_file_size" INTEGER DEFAULT {},
+        "max_file_size" INTEGER DEFAULT {config.MAX_FILE_SIZE},
         "webhook_url" TEXT,
-        "mfa_required" INTEGER DEFAULT 0);'''.format(config.MAX_FILE_SIZE),
+        "mfa_required" INTEGER DEFAULT 0);''',
 
         '''INSERT OR IGNORE INTO settings
         (redirect_url, source_ip, source_port, client_port, client_enabled, proxy_enabled, server_header)
@@ -187,8 +206,24 @@ class DispatchDB(SqliteDB):
         "target_value" TEXT,
         "description" TEXT,
         "enabled" INTEGER DEFAULT 1,
-        "created_date" DATETIME DEFAULT (datetime('now','localtime')));'''
+        "created_date" DATETIME DEFAULT (datetime('now','localtime')));''',
+
+        '''CREATE TABLE IF NOT EXISTS file_requests (
+        "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+        "timestamp" DATETIME DEFAULT (datetime('now','localtime')),
+        "path" TEXT,
+        "result" TEXT NOT NULL,
+        "client_ip" TEXT,
+        "user_agent" TEXT,
+        "username" TEXT,
+        "auth_method" TEXT);''',
+
+        '''CREATE INDEX IF NOT EXISTS idx_file_requests_id ON file_requests(id);'''
     ]
+
+    # Keep client file-request history bounded so the table stays cheap to query.
+    FILE_REQUEST_RETENTION = 5000
+    _file_request_schema_ready = set()
 
     def __init__(self, db_file, timeout=3):
         SqliteDB.__init__(self, db_file, timeout)
@@ -209,6 +244,9 @@ class DispatchDB(SqliteDB):
         self.exec('UPDATE folders SET access=2 WHERE access IS NULL OR access < 2;')
         # Migration: Add MFA columns to existing databases
         self._migrate_mfa_columns()
+        self.ensure_file_request_schema()
+        self.ensure_file_guids()
+        self.ensure_download_limits()
 
     def _migrate_mfa_columns(self):
         """Add MFA columns to users table if they don't exist"""
@@ -228,6 +266,164 @@ class DispatchDB(SqliteDB):
         if 'mfa_required' not in settings_col_names:
             self.exec('ALTER TABLE settings ADD COLUMN mfa_required INTEGER DEFAULT 0;')
 
+    def ensure_file_request_schema(self):
+        """Create the file-request table on existing databases without touching other data."""
+        if self.db_file in DispatchDB._file_request_schema_ready:
+            return True
+        created = self.exec(
+            '''CREATE TABLE IF NOT EXISTS file_requests (
+            "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+            "timestamp" DATETIME DEFAULT (datetime('now','localtime')),
+            "path" TEXT,
+            "result" TEXT NOT NULL,
+            "client_ip" TEXT,
+            "user_agent" TEXT,
+            "username" TEXT,
+            "auth_method" TEXT);'''
+        )
+        if created is False:
+            return False
+        indexed = self.exec('CREATE INDEX IF NOT EXISTS idx_file_requests_id ON file_requests(id);')
+        if indexed is False:
+            return False
+        DispatchDB._file_request_schema_ready.add(self.db_file)
+        return True
+
+    def add_file_request(self, path, result, client_ip=None, user_agent=None, username=None, auth_method=None):
+        if not self.ensure_file_request_schema():
+            return False
+        inserted = self.exec(
+            '''INSERT INTO file_requests (path, result, client_ip, user_agent, username, auth_method)
+               VALUES (?, ?, ?, ?, ?, ?);''',
+            (path, result, client_ip, user_agent, username, auth_method),
+        )
+        if inserted is False:
+            return False
+        # Drop rows older than the retention window. With fewer rows, id < MIN(id) deletes nothing.
+        self.exec(
+            '''DELETE FROM file_requests WHERE id < (
+                SELECT MIN(id) FROM (
+                    SELECT id FROM file_requests ORDER BY id DESC LIMIT ?
+                )
+            );''',
+            (self.FILE_REQUEST_RETENTION,),
+        )
+        return True
+
+    def _file_request_where(self, result=None, ip=None, search=None):
+        clauses = []
+        args = []
+        if result:
+            clauses.append('result = ?')
+            args.append(result)
+        if ip:
+            clauses.append('client_ip = ?')
+            args.append(ip)
+        if search:
+            escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            like = f'%{escaped}%'
+            clauses.append(
+                "(path LIKE ? ESCAPE '\\' OR IFNULL(username, '') LIKE ? ESCAPE '\\' "
+                "OR IFNULL(user_agent, '') LIKE ? ESCAPE '\\' OR IFNULL(client_ip, '') LIKE ? ESCAPE '\\')"
+            )
+            args.extend([like, like, like, like])
+        where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
+        return where, args
+
+    def list_file_requests(self, limit=100, result=None, ip=None, search=None):
+        self.ensure_file_request_schema()
+        where, args = self._file_request_where(result, ip, search)
+        # where is fixed SQL fragments; filter values are bound parameters.
+        sql = (
+            "SELECT id, timestamp, path, result, client_ip, user_agent, username, auth_method "
+            "FROM file_requests" + where + " ORDER BY id DESC LIMIT ?;"
+        )  # noqa: S608
+        rows = self.exec(sql, tuple(args) + (int(limit),))
+        return self._file_request_rows(rows)
+
+    def list_file_requests_since(self, since_id, limit=100, result=None, ip=None, search=None):
+        """Rows newer than since_id, oldest first, so a live feed can append them in order."""
+        self.ensure_file_request_schema()
+        where, args = self._file_request_where(result, ip, search)
+        since_sql = 'id > ?'
+        if where:
+            where = where + ' AND ' + since_sql
+        else:
+            where = ' WHERE ' + since_sql
+        args = list(args) + [int(since_id or 0)]
+        sql = (  # noqa: S608
+            "SELECT id, timestamp, path, result, client_ip, user_agent, username, auth_method "
+            "FROM file_requests" + where + " ORDER BY id ASC LIMIT ?;"
+        )
+        rows = self.exec(sql, tuple(args) + (int(limit),))
+        return self._file_request_rows(rows)
+
+    def _file_request_rows(self, rows):
+        data = []
+        if not rows:
+            return data
+        for row in rows:
+            data.append({
+                'id': row[0],
+                'timestamp': row[1] or '',
+                'path': row[2] or '',
+                'result': row[3] or '',
+                'client_ip': row[4] or '',
+                'user_agent': row[5] or '',
+                'username': row[6] or '',
+                'auth_method': row[7] or 'none',
+            })
+        return data
+
+    def file_request_summary(self, result=None, ip=None, search=None):
+        self.ensure_file_request_schema()
+        where, args = self._file_request_where(result, ip, search)
+        summary = {
+            'total': 0,
+            'served': 0,
+            'denied': 0,
+            'not_found': 0,
+            'auth_failure': 0,
+            'failed': 0,
+            'top_requesters': [],
+            'top_files': [],
+        }
+        counts = self.exec(
+            "SELECT result, COUNT(*) FROM file_requests" + where + " GROUP BY result;",  # noqa: S608
+            tuple(args),
+        )
+        if counts:
+            for name, count in counts:
+                summary['total'] += count
+                if name in summary:
+                    summary[name] = count
+        summary['failed'] = summary['denied'] + summary['not_found'] + summary['auth_failure']
+
+        requester_sql = (
+            "SELECT client_ip, username, COUNT(*) AS hits FROM file_requests"  # noqa: S608
+            + where
+            + " GROUP BY client_ip, IFNULL(username, '') ORDER BY hits DESC LIMIT 5;"
+        )
+        requesters = self.exec(requester_sql, tuple(args))
+        if requesters:
+            summary['top_requesters'] = [
+                {'client_ip': row[0] or '', 'username': row[1] or '', 'count': row[2]}
+                for row in requesters
+            ]
+
+        file_sql = (
+            "SELECT path, COUNT(*) AS hits FROM file_requests"  # noqa: S608
+            + where
+            + " GROUP BY path ORDER BY hits DESC LIMIT 5;"
+        )
+        files = self.exec(file_sql, tuple(args))
+        if files:
+            summary['top_files'] = [
+                {'path': row[0] or '', 'count': row[1]}
+                for row in files
+            ]
+        return summary
+
     def validate_login(self, username, password):
         # Primary DB login functionality check if passwords match
         try:
@@ -235,7 +431,8 @@ class DispatchDB(SqliteDB):
             if user_pass == gen_password_hash(password):
                 self.exec('''UPDATE users SET last_login=datetime('now','localtime')''')
                 return True
-        except:
+        except Exception:
+            logging.debug('Login validation failed', exc_info=True)
             return False
         return False
 
@@ -259,7 +456,8 @@ class DispatchDB(SqliteDB):
                 data['role'] = x[2]
                 data['role_name'] = self.user_roles[int(x[2])]
                 return data
-        except:
+        except Exception:
+            logging.debug('API key validation failed', exc_info=True)
             return False
         return False
 
@@ -450,23 +648,119 @@ class DispatchDB(SqliteDB):
             return '0'
         return encrypt_value
 
-    def upload_file(self, filename, full_path, alias, user, access, encrypt, folder_id=None):
+    def ensure_file_guids(self):
+        """Add and backfill public file GUIDs without rewriting other tables."""
+        columns = self.exec('PRAGMA table_info(files);')
+        if not columns:
+            return False
+        names = [col[1] for col in columns]
+        if 'guid' not in names:
+            added = self.exec('ALTER TABLE files ADD COLUMN guid TEXT;')
+            if added is False:
+                return False
+        missing = self.exec("SELECT id FROM files WHERE guid IS NULL OR guid = '';")
+        if missing:
+            for row in missing:
+                self.exec('UPDATE files SET guid=? WHERE id=?;', (new_file_guid(), row[0]))
+        self.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_files_guid ON files(guid);')
+        return True
+
+    def ensure_download_limits(self):
+        """Add per-file download caps without rewriting existing file rows."""
+        columns = self.exec('PRAGMA table_info(files);')
+        if not columns:
+            return False
+        names = [col[1] for col in columns]
+        if 'max_downloads' not in names:
+            if self.exec('ALTER TABLE files ADD COLUMN max_downloads INTEGER;') is False:
+                return False
+        if 'download_count' not in names:
+            if self.exec('ALTER TABLE files ADD COLUMN download_count INTEGER DEFAULT 0;') is False:
+                return False
+        return True
+
+    def set_download_limit(self, file_guid, max_downloads):
+        self.ensure_download_limits()
+        if not is_file_guid(file_guid if isinstance(file_guid, str) else ''):
+            return False
+        file_guid = file_guid.strip()
+        if max_downloads is not None:
+            try:
+                max_downloads = int(max_downloads)
+            except (TypeError, ValueError):
+                return False
+            if max_downloads <= 0:
+                max_downloads = None
+        updated = self.exec('UPDATE files SET max_downloads=? WHERE guid=?;', (max_downloads, file_guid))
+        if updated is False:
+            return False
+        return bool(self.exec('SELECT 1 FROM files WHERE guid=? LIMIT 1;', (file_guid,)))
+
+    def consume_download(self, file_guid):
+        """Count one delivery. False when the file is missing or its cap is already used."""
+        self.ensure_download_limits()
+        if not is_file_guid(file_guid if isinstance(file_guid, str) else ''):
+            return False
+        rows = self.exec(
+            'SELECT max_downloads, IFNULL(download_count, 0) FROM files WHERE guid=? LIMIT 1;',
+            (file_guid,),
+        )
+        if not rows:
+            return False
+        max_downloads, count = rows[0]
+        # 0 and NULL both mean unlimited.
+        if max_downloads is not None and int(max_downloads) > 0 and int(count) >= int(max_downloads):
+            return False
+        updated = self.exec(
+            'UPDATE files SET download_count=IFNULL(download_count, 0)+1 WHERE guid=?;',
+            (file_guid,),
+        )
+        return updated is not False
+
+    def guid_for_file_row(self, row_id):
+        self.ensure_file_guids()
+        rows = self.exec('SELECT guid FROM files WHERE id=? LIMIT 1;', (row_id,))
+        if rows and rows[0][0]:
+            return rows[0][0]
+        return None
+
+    def file_listing_revision(self):
+        """Cheap fingerprint of the file and folder listing."""
+        self.ensure_file_guids()
+        self.ensure_download_limits()
+        files = self.exec(
+            "SELECT guid, filename, alias, access, IFNULL(folder_id, 0), IFNULL(encrypt, ''), "
+            "IFNULL(max_downloads, -1), IFNULL(download_count, 0) FROM files ORDER BY guid;"
+        ) or []
+        folders = self.exec(
+            "SELECT id, folder_name, IFNULL(parent_id, 0), access FROM folders ORDER BY id;"
+        ) or []
+        payload = repr((files, folders)).encode('utf-8')
+        return hashlib.sha256(payload).hexdigest()
+
+    def upload_file(self, filename, full_path, alias, user, access, encrypt, folder_id=None, max_downloads=None):
+        self.ensure_file_guids()
+        self.ensure_download_limits()
         if encrypt is None or encrypt == '':
             encrypt = None
         elif encrypt == 0:
             encrypt = '0'
         sql = '''INSERT OR IGNORE INTO files
-                (filename, file_path, alias, uploaded_by, access, encrypt, folder_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?);'''
-        if self.exec(sql, (filename, full_path, alias, user, access, encrypt, folder_id)) is not False:
+                (guid, filename, file_path, alias, uploaded_by, access, encrypt, folder_id, max_downloads, download_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0);'''
+        guid = new_file_guid()
+        if self.exec(sql, (guid, filename, full_path, alias, user, access, encrypt, folder_id, max_downloads)) is not False:
             return True
         return False
 
     def list_files(self, include_size=False):
+        self.ensure_file_guids()
         data = []
         # Get settings once instead of subquery per row
         settings = self.get_settings()
-        sql = '''SELECT id, filename, file_path, alias, upload_date, uploaded_by, access, encrypt, folder_id FROM files;'''
+        self.ensure_download_limits()
+        sql = '''SELECT guid, filename, file_path, alias, upload_date, uploaded_by, access, encrypt, folder_id,
+                        max_downloads, IFNULL(download_count, 0) FROM files;'''
         for x in self.exec(sql):
             obj = {}
             obj['id'] = x[0]
@@ -484,15 +778,33 @@ class DispatchDB(SqliteDB):
             obj['client_port'] = settings.get('client_port', 443)
             obj['encrypt'] = self._coerce_encrypt_value(x[7])
             obj['folder_id'] = x[8]
+            obj['max_downloads'] = x[9]
+            obj['download_count'] = x[10] or 0
             # Only get file size if requested (slow disk I/O)
             obj['file_size'] = config.get_file_size(obj['file_path']) if include_size else ''
             data.append(obj)
         return data
 
     def update_access_by_id(self, file_id, access):
-        if self.exec('UPDATE files SET access=? WHERE id=?;', (access, file_id)):
-            return True
-        return False
+        if not is_file_guid(file_id if isinstance(file_id, str) else ''):
+            return False
+        file_id = file_id.strip()
+        # UPDATE returns no rows, so an empty list is success. False is a SQL error.
+        updated = self.exec('UPDATE files SET access=? WHERE guid=?;', (access, file_id))
+        if updated is False:
+            return False
+        rows = self.exec('SELECT access FROM files WHERE guid=? LIMIT 1;', (file_id,))
+        return bool(rows) and int(rows[0][0]) == int(access)
+
+    def get_file_by_filename(self, filename):
+        """Look up a file by its stored filename. The column is unique."""
+        self.ensure_file_guids()
+        if not filename:
+            return {}
+        rows = self.exec('SELECT guid FROM files WHERE filename=? LIMIT 1;', (filename,))
+        if not rows or not rows[0][0]:
+            return {}
+        return self.get_file_by_id(rows[0][0])
 
     def alias_exists(self, alias):
         # user for collision checks with alias names
@@ -501,36 +813,47 @@ class DispatchDB(SqliteDB):
         return False
 
     def get_file_by_alias(self, alias):
+        self.ensure_file_guids()
         data = {}
-        for x in self.exec('SELECT id, file_path, access, encrypt FROM files WHERE alias=? LIMIT 1;', (alias,)):
+        for x in self.exec('SELECT guid, id, file_path, access, encrypt FROM files WHERE alias=? LIMIT 1;', (alias,)):
             data['id'] = x[0]
-            data['file_path'] = x[1]
-            data['access'] = x[2]
-            data['encrypt'] = self._coerce_encrypt_value(x[3])
-            data['access_name'] = self.file_access[x[2]]
+            data['row_id'] = x[1]
+            data['file_path'] = x[2]
+            data['access'] = x[3]
+            data['encrypt'] = self._coerce_encrypt_value(x[4])
+            data['access_name'] = self.file_access[x[3]]
         return data
 
     def get_file_by_id(self, file_id):
-        # used to pull file info for editing
+        """Look up a file by its public GUID. Integer ids are not accepted."""
+        self.ensure_file_guids()
+        if not is_file_guid(file_id if isinstance(file_id, str) else ''):
+            return {}
         data = {}
-        sql = '''SELECT filename, file_path, alias, upload_date, 
-            uploaded_by, access, encrypt, folder_id
-        FROM files 
-        WHERE id=? LIMIT 1;'''
+        self.ensure_download_limits()
+        sql = '''SELECT guid, id, filename, file_path, alias, upload_date,
+            uploaded_by, access, encrypt, folder_id, max_downloads, IFNULL(download_count, 0)
+        FROM files
+        WHERE guid=? LIMIT 1;'''
         for x in self.exec(sql, (file_id,)):
-            data['id'] = file_id
-            data['filename'] = x[0]
-            data['file_path'] = x[1]
-            data['alias'] = x[2]
-            data['upload_date'] = x[3]
-            data['uploaded_by'] = x[4]
-            data['access'] = x[5]
-            data['encrypt'] = self._coerce_encrypt_value(x[6])
-            data['folder_id'] = x[7]
-            data['access_name'] = self.file_access[x[5]]
+            data['id'] = x[0]
+            data['row_id'] = x[1]
+            data['filename'] = x[2]
+            data['file_path'] = x[3]
+            data['alias'] = x[4]
+            data['upload_date'] = x[5]
+            data['uploaded_by'] = x[6]
+            data['access'] = x[7]
+            data['encrypt'] = self._coerce_encrypt_value(x[8])
+            data['folder_id'] = x[9]
+            data['max_downloads'] = x[10]
+            data['download_count'] = x[11] or 0
+            data['access_name'] = self.file_access[x[7]]
         return data
 
     def update_file_by_id(self, file_id, filename, full_path, alias, user, access, encrypt, folder_id=None):
+        if not is_file_guid(file_id if isinstance(file_id, str) else ''):
+            return False
         if encrypt is None or encrypt == '':
             encrypt = None
         elif encrypt == 0:
@@ -538,18 +861,24 @@ class DispatchDB(SqliteDB):
         sql = '''UPDATE files
         SET filename=?, file_path=?, alias=?, encrypt=?,
         upload_date=datetime('now','localtime'), uploaded_by=?,
-        access=?, folder_id=? WHERE id=?;'''
-        self.exec(sql, (filename, full_path, alias, encrypt, user, access, folder_id, file_id))
+        access=?, folder_id=? WHERE guid=?;'''
+        return self.exec(sql, (filename, full_path, alias, encrypt, user, access, folder_id, file_id))
 
     def del_file_by_id(self, file_id):
-        return self.exec('DELETE FROM files WHERE id=?;', (file_id,))
+        if not is_file_guid(file_id if isinstance(file_id, str) else ''):
+            return False
+        return self.exec('DELETE FROM files WHERE guid=?;', (file_id,))
 
     def move_file_to_folder(self, file_id, folder_id):
         # Move file to a folder (or root if folder_id is None)
-        return self.exec('UPDATE files SET folder_id=? WHERE id=?;', (folder_id, file_id))
+        if not is_file_guid(file_id if isinstance(file_id, str) else ''):
+            return False
+        return self.exec('UPDATE files SET folder_id=? WHERE guid=?;', (folder_id, file_id))
 
     def update_file_storage_by_id(self, file_id, full_path, folder_id):
-        return self.exec('UPDATE files SET file_path=?, folder_id=? WHERE id=?;', (full_path, folder_id, file_id))
+        if not is_file_guid(file_id if isinstance(file_id, str) else ''):
+            return False
+        return self.exec('UPDATE files SET file_path=?, folder_id=? WHERE guid=?;', (full_path, folder_id, file_id))
 
     #
     # Folder Table
@@ -844,8 +1173,10 @@ class DispatchDB(SqliteDB):
             return x[0]
         return False
 
-    def update_proxy_routes(self, routes={}):
+    def update_proxy_routes(self, routes=None):
         # Truncate DB and re-add
+        if routes is None:
+            routes = {}
         self.exec('''DELETE FROM proxy_routes;''')
         for path, redirect_url in routes.items():
             self.exec("INSERT INTO proxy_routes (path, redirect_url) VALUES (?, ?)", (path, redirect_url))
@@ -856,12 +1187,14 @@ class DispatchDB(SqliteDB):
             result = self.exec("SELECT header_name, header_value FROM response_headers")
             if result:
                 return {x[0]: x[1] for x in result}
-        except:
-            pass
+        except Exception:
+            logging.debug('Failed to read response headers', exc_info=True)
         return {}
 
-    def update_response_headers(self, headers={}):
+    def update_response_headers(self, headers=None):
         """Update response headers - truncate and re-add"""
+        if headers is None:
+            headers = {}
         self.exec('''DELETE FROM response_headers;''')
         for name, value in headers.items():
             if name and value:  # Skip empty entries

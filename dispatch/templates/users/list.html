@@ -66,11 +66,13 @@ Users
         .access_perms {
             border:0;
             font-size:13px;
-            background-color:#f0ebeb;
+            background-color: var(--dispatch-input-bg);
+            color: var(--dispatch-text);
         }
 
         .access_perms:focus {
-            background-color:#f0ebeb;
+            background-color: var(--dispatch-input-bg);
+            color: var(--dispatch-text);
             z-index: 10;
             box-shadow: none;
         }
@@ -153,7 +155,6 @@ Users
                     <td style="vertical-align: middle; width: 80px;">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" name="mfa_required" id="mfa_required"
-                                   style="width: 50px; height: 26px;"
                                    {{ 'checked' if config.get('mfa_required') else '' }}>
                         </div>
                     </td>
@@ -183,5 +184,5 @@ Users
   <script src="https://cdn.datatables.net/1.10.20/js/jquery.dataTables.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.datatables.net/1.10.20/js/dataTables.bootstrap4.min.js" crossorigin="anonymous"></script>
   <script>ListUsers();</script>
-  {{ status_msg }}
+  {% include "_notice.html" %}
 {% endblock %}
