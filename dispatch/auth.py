@@ -2,7 +2,7 @@ import jwt
 import logging
 from functools import wraps
 from datetime import datetime, timedelta, timezone
-from flask import redirect, request, current_app, Response
+from flask import g, redirect, request, current_app, Response
 
 from dispatch import config
 from dispatch.db import DispatchDB
@@ -94,16 +94,41 @@ def validateKey(request):
 
 
 def validateToken(request):
-    # Validate JWT sent in Cookie against expiration date
+    # Validate JWT sent in Cookie against expiration date.
+    # A recently expired token is renewed on the response instead of redirecting,
+    # so POST bodies (file access, and similar) are not discarded.
     token = request.cookies.get(config.COOKIE_NAME)
     if token:
         try:
             return jwt.decode(token, config.SECRET_KEY, algorithms=['HS256'])
         except jwt.ExpiredSignatureError:
-            return refreshToken(token, request)
+            return _renew_expired_token(token)
         except Exception as e:
             logging.debug(f'Token Error:: {e}')
     return False
+
+
+def _renew_expired_token(token, minute=20):
+    try:
+        data = jwt.decode(token, config.SECRET_KEY, algorithms=['HS256'], options={"verify_exp": False})
+    except Exception:
+        logging.debug('Expired token could not be read', exc_info=True)
+        return False
+    now = datetime.now(timezone.utc)
+    exp_time = datetime.fromtimestamp(data['exp'], tz=timezone.utc)
+    if now >= (exp_time + timedelta(minutes=minute)):
+        return False
+    payload = {key: value for key, value in data.items() if key != 'exp'}
+    g.dispatch_new_token = createToken(payload)
+    return payload
+
+
+def apply_refreshed_token(response):
+    """Attach a renewed session cookie when validateToken refreshed an expired JWT."""
+    token = getattr(g, 'dispatch_new_token', None)
+    if token:
+        response.set_cookie(config.COOKIE_NAME, value=token, **config.auth_cookie_settings(request))
+    return response
 
 
 def refreshToken(token, request, minute=20):

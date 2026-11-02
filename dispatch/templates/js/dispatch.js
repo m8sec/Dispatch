@@ -14,19 +14,6 @@ function showNotification(message, isSuccess = true) {
     }, 3000);
 }
 
-function listingCanEditLimits() {
-    var role = parseInt(document.body.getAttribute('data-dispatch-role') || '0', 10);
-    return role >= 3;
-}
-
-function downloadLimitValue(file) {
-    if (file.max_downloads === null || file.max_downloads === undefined || file.max_downloads === '') {
-        return 0;
-    }
-    var max = parseInt(file.max_downloads, 10);
-    return max > 0 ? max : 0;
-}
-
 function downloadBudget(file) {
     var used = parseInt(file.download_count || 0, 10) || 0;
     if (file.max_downloads === null || file.max_downloads === undefined || file.max_downloads === '') {
@@ -242,12 +229,6 @@ function renderFilesAndFolders(files, folders) {
                         if (budget) {
                             html += '<div class="dispatch-subtle">' + htmlEscape(budget) + '</div>';
                         }
-                        if (listingCanEditLimits()) {
-                            html += '<label class="download-limit-row">';
-                            html += '<input type="number" min="0" class="form-control form-control-sm download-limit" value="' + downloadLimitValue(o) + '" onchange="updateDownloadLimit(\'' + htmlEscape(o['id']) + '\', this)">';
-                            html += '<span class="dispatch-subtle">max, 0 = unlimited</span>';
-                            html += '</label>';
-                        }
                         html += " " + `${o['encrypt'] ? "🔒" : ""}`;
                         html += `${o['access'] == 1 ? "🌐" : ""}`;
                         return html;
@@ -311,11 +292,7 @@ function renderFilesAndFolders(files, folders) {
                 "bSortable": true,
                 "mData": null,
                 "mRender": function (o) {
-                    var onchangeHandler = o.isFolder ?
-                        'updateFolderAccess(' + parseInt(o['id'], 10) + ', this)' :
-                        'updateAccess(\'' + htmlEscape(o['id']) + '\', this)';
-
-                    var html = '<select class="access_perms form-control" onchange="' + onchangeHandler + '">';
+                    var html = '<select class="access_perms form-control" data-access-id="' + htmlEscape(o['id']) + '" data-access-kind="' + (o.isFolder ? 'folder' : 'file') + '">';
                     if (o.isFolder) {
                         html += '<option value="2"' + (o['access'] == 2 ? ' selected' : '') + '>Upload Only</option>';
                         html += '<option value="3"' + (o['access'] == 3 ? ' selected' : '') + '>Operator</option>';
@@ -445,7 +422,7 @@ function startListingPoll() {
                 resetFileTable();
             }
         });
-    }, 4000);
+    }, 12000);
 }
 
 function resetFileTable(){
@@ -487,10 +464,25 @@ function resetFileTable(){
     });
 }
 
+$(document).on('change', '#file_listing select.access_perms', function () {
+    var kind = this.getAttribute('data-access-kind');
+    var id = this.getAttribute('data-access-id');
+    if (kind === 'folder') {
+        updateFolderAccess(parseInt(id, 10), this);
+    } else {
+        updateAccess(id, this);
+    }
+});
+
 function updateAccess(id, access_elm) {
+    var access = parseInt(access_elm.value, 10);
+    if (!id || isNaN(access)) {
+        showNotification('Failed to update file access', false);
+        return;
+    }
     var post_data = JSON.stringify({
-            id: id ? id : false,
-            access: access_elm.value ? access_elm.value : false,
+            id: id,
+            access: access,
     });
 
     $.ajax({
@@ -509,32 +501,6 @@ function updateAccess(id, access_elm) {
             access_elm.classList.add('control-failed');
             setTimeout(() => access_elm.classList.remove('control-failed'), 625);
             showNotification('Failed to update file access', false);
-        }
-    });
-}
-
-function updateDownloadLimit(id, input) {
-    var limit = parseInt(input.value, 10);
-    if (isNaN(limit) || limit < 0) {
-        showNotification('Download limit must be 0 or greater', false);
-        return;
-    }
-    $.ajax({
-        url: '/api/files/download-limit',
-        dataType: 'json',
-        contentType: 'application/json; charset=utf-8',
-        type: 'POST',
-        data: JSON.stringify({id: id, max_downloads: limit}),
-        success: function () {
-            input.classList.add('control-saved');
-            setTimeout(() => input.classList.remove('control-saved'), 625);
-            resetFileTable();
-            showNotification(limit === 0 ? 'Download limit cleared' : 'Download limit updated', true);
-        },
-        error: function () {
-            input.classList.add('control-failed');
-            setTimeout(() => input.classList.remove('control-failed'), 625);
-            showNotification('Failed to update download limit', false);
         }
     });
 }

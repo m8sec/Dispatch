@@ -459,6 +459,7 @@ class ClientServer:
     #
     @app.after_request
     def add_header(response):
+        auth.apply_refreshed_token(response)
         response.headers['X-Frame-Options'] = "deny"
         # Apply custom response headers from config
         custom_headers = current_app.config.get('response_headers', {})

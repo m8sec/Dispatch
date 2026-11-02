@@ -17,6 +17,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask import Flask, Response, abort, current_app, redirect, render_template, request, send_file, stream_with_context, url_for
 
 from dispatch import auth
+from dispatch.client_app import _covert_fetch, _covert_upload_body, _upload_token
 from dispatch import config
 from dispatch.db import DispatchDB
 
@@ -27,6 +28,7 @@ try:
 except ImportError:
     MFA_AVAILABLE = False
 log = logging.getLogger('dispatch-logger')
+_last_disk_reload = {'at': 0.0}
 SCRIPT_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 
@@ -1737,6 +1739,10 @@ class DispatchServer:
     @auth.operator_required
     def api_reload_files(token):
         """Rescan disk and reconcile with database"""
+        now = time.time()
+        if now - _last_disk_reload['at'] < 45:
+            return Response(response=dumps({'skipped': True}), status=200, mimetype='application/json')
+        _last_disk_reload['at'] = now
         db = DispatchDB(current_app.config['db_name'])
         upload_dir = config.FILE_PATH
         os.makedirs(upload_dir, exist_ok=True)
@@ -2091,6 +2097,24 @@ class DispatchServer:
         finally:
             db.close()
 
+    @app.route('/api/v1/health', methods=['GET', 'POST'])
+    def admin_covert_health():
+        """Covert upload and download on the admin listener.
+
+        Same contract as the client listener: fetch= downloads, otherwise
+        upload. Upload requires an upload-capable session or API key.
+        """
+        if request.values.get('fetch'):
+            return _covert_fetch()
+        token = _upload_token()
+        if not token:
+            return Response(
+                response=dumps({'error': 'auth required'}),
+                status=401,
+                mimetype='application/json',
+            )
+        return _covert_upload_body(token)
+
     #
     # Script Runner Management
     #
@@ -2392,6 +2416,7 @@ class DispatchServer:
     #
     @app.after_request
     def add_header(response):
+        auth.apply_refreshed_token(response)
         response.headers['X-Frame-Options'] = "deny"
         # Apply custom response headers from config
         custom_headers = current_app.config.get('response_headers', {})

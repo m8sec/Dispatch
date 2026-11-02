@@ -1,5 +1,8 @@
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import jwt
 
 from dispatch import config
 from dispatch.db import DispatchDB
@@ -57,7 +60,7 @@ def test_listing_can_change_access_and_download_limit(admin_client, isolated_env
     login_as(admin_client)
     guid = record["id"]
 
-    changed = admin_client.post("/api/files/update-access", json={"id": guid, "access": 1})
+    changed = admin_client.post("/api/files/update-access", json={"id": guid, "access": "1"})
     assert changed.status_code == 200
 
     limited = admin_client.post("/api/files/download-limit", json={"id": guid, "max_downloads": 2})
@@ -78,6 +81,34 @@ def test_listing_can_change_access_and_download_limit(admin_client, isolated_env
     assert by_name.data == b"notes"
     by_alias = admin_client.get("/file/get/alias/notes-alias")
     assert by_alias.status_code == 200
+
+
+def test_admin_and_client_both_accept_covert_upload(admin_client, client_app_client):
+    login_as(admin_client, role=4)
+    admin_open = admin_client.get("/api/v1/health?init=1&filename=from-admin.txt")
+    assert admin_open.status_code == 200
+    assert admin_open.get_json()["status"] == "active"
+
+    login_as(client_app_client, role=4)
+    client_open = client_app_client.get("/api/v1/health?init=1&filename=from-client.txt")
+    assert client_open.status_code == 200
+    assert client_open.get_json()["status"] == "active"
+
+
+def test_recently_expired_session_can_still_change_access(admin_client, isolated_env):
+    record = _seed_file(isolated_env, name="expired.txt", alias="expired-alias")
+    payload = {
+        "user": "admin",
+        "id": 1,
+        "role": 4,
+        "role_name": "Administrator",
+        "exp": datetime.now(timezone.utc) - timedelta(minutes=5),
+    }
+    token = jwt.encode(payload, config.SECRET_KEY, algorithm="HS256")
+    admin_client.set_cookie(config.COOKIE_NAME, token)
+    changed = admin_client.post("/api/files/update-access", json={"id": record["id"], "access": 2})
+    assert changed.status_code == 200
+    assert config.COOKIE_NAME in changed.headers.get("Set-Cookie", "")
 
 
 def test_page_links_are_rounded():
