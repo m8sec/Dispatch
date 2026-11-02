@@ -410,6 +410,9 @@ html[data-theme="dark"] .dispatch-icon {
 }
 
 .sidebar-nav .nav-link span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -513,10 +516,14 @@ html[data-theme="dark"] .dispatch-icon {
 .sidebar-nav .nav-link,
 .sidebar-nav .nav-link.collapsed {
   border-radius: 10px;
-  margin: 2px 12px;
-  padding: 10px 12px;
+  margin: 2px 8px;
+  padding: 8px 10px;
   background: var(--dispatch-surface-2);
   color: var(--dispatch-text);
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sidebar-nav .nav-link i,
