@@ -683,7 +683,18 @@ class DispatchDB(SqliteDB):
         self.ensure_download_limits()
         if not is_file_guid(file_guid if isinstance(file_guid, str) else ''):
             return False
-        return self.exec('UPDATE files SET max_downloads=? WHERE guid=?;', (max_downloads, file_guid))
+        file_guid = file_guid.strip()
+        if max_downloads is not None:
+            try:
+                max_downloads = int(max_downloads)
+            except (TypeError, ValueError):
+                return False
+            if max_downloads <= 0:
+                max_downloads = None
+        updated = self.exec('UPDATE files SET max_downloads=? WHERE guid=?;', (max_downloads, file_guid))
+        if updated is False:
+            return False
+        return bool(self.exec('SELECT 1 FROM files WHERE guid=? LIMIT 1;', (file_guid,)))
 
     def consume_download(self, file_guid):
         """Count one delivery. False when the file is missing or its cap is already used."""
@@ -697,7 +708,8 @@ class DispatchDB(SqliteDB):
         if not rows:
             return False
         max_downloads, count = rows[0]
-        if max_downloads is not None and int(count) >= int(max_downloads):
+        # 0 and NULL both mean unlimited.
+        if max_downloads is not None and int(max_downloads) > 0 and int(count) >= int(max_downloads):
             return False
         updated = self.exec(
             'UPDATE files SET download_count=IFNULL(download_count, 0)+1 WHERE guid=?;',
@@ -776,9 +788,23 @@ class DispatchDB(SqliteDB):
     def update_access_by_id(self, file_id, access):
         if not is_file_guid(file_id if isinstance(file_id, str) else ''):
             return False
-        if self.exec('UPDATE files SET access=? WHERE guid=?;', (access, file_id)):
-            return True
-        return False
+        file_id = file_id.strip()
+        # UPDATE returns no rows, so an empty list is success. False is a SQL error.
+        updated = self.exec('UPDATE files SET access=? WHERE guid=?;', (access, file_id))
+        if updated is False:
+            return False
+        rows = self.exec('SELECT access FROM files WHERE guid=? LIMIT 1;', (file_id,))
+        return bool(rows) and int(rows[0][0]) == int(access)
+
+    def get_file_by_filename(self, filename):
+        """Look up a file by its stored filename. The column is unique."""
+        self.ensure_file_guids()
+        if not filename:
+            return {}
+        rows = self.exec('SELECT guid FROM files WHERE filename=? LIMIT 1;', (filename,))
+        if not rows or not rows[0][0]:
+            return {}
+        return self.get_file_by_id(rows[0][0])
 
     def alias_exists(self, alias):
         # user for collision checks with alias names

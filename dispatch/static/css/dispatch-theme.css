@@ -329,12 +329,47 @@ html[data-theme="dark"] .dispatch-icon {
   vertical-align: middle;
 }
 
+.btn,
+.page-link,
+.dataTables_wrapper .dataTables_paginate .paginate_button,
+.actions button {
+  border-radius: 10px !important;
+}
+
+.pagination {
+  gap: 6px;
+}
+
+.pagination .page-link,
+.page-item + .page-item .page-link {
+  margin-left: 0 !important;
+}
+
 .page-link,
 .dataTables_wrapper .dataTables_paginate .paginate_button {
   background: var(--dispatch-surface) !important;
   color: var(--dispatch-text) !important;
   border: 1px solid var(--dispatch-control-border) !important;
   opacity: 1 !important;
+}
+
+.download-limit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.download-limit {
+  width: 84px;
+}
+
+.control-saved {
+  outline: 2px solid var(--dispatch-accent);
+}
+
+.control-failed {
+  outline: 2px solid #dc3545;
 }
 
 .page-item.active .page-link,

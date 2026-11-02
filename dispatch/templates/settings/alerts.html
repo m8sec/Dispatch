@@ -13,6 +13,7 @@ Alerts
   <nav>
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item"><a href="/settings/admin">Settings</a></li>
       <li class="breadcrumb-item active">Alerts</li>
     </ol>
   </nav>
@@ -106,7 +107,7 @@ function loadUsers() {
 }
 
 function loadFiles() {
-    fetch('/api/files/list')
+    fetch('/api/files/listing')
         .then(response => response.json())
         .then(data => {
             files = data;
@@ -152,8 +153,8 @@ function renderAlerts(alerts) {
             const user = users.find(u => u.id === alert.target_id);
             targetDisplay = user ? escapeHtml(user.username) : `User ID: ${parseInt(alert.target_id, 10)}`;
         } else if (alert.alert_type === 'file_download' && alert.target_id) {
-            const file = files.find(f => f.id === alert.target_id);
-            targetDisplay = file ? escapeHtml(file.filename) : `File ID: ${parseInt(alert.target_id, 10)}`;
+            const file = files.find(f => String(f.id) === String(alert.target_id));
+            targetDisplay = file ? escapeHtml(file.filename) : escapeHtml(alert.target_id);
         } else if (alert.target_value) {
             targetDisplay = escapeHtml(alert.target_value);
         }
@@ -216,7 +217,7 @@ function updateAlertFields() {
             targetLabel.innerHTML = '<b>File</b>';
             targetSelect.style.display = 'block';
             targetSelect.innerHTML = '<option value="">Select file...</option>' +
-                files.map(f => `<option value="${parseInt(f.id, 10)}">${escapeHtml(f.filename)}</option>`).join('');
+                files.map(f => `<option value="${escapeHtml(f.id)}">${escapeHtml(f.filename)}</option>`).join('');
             break;
 
         case 'failed_logins':

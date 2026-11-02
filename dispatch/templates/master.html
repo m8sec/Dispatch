@@ -16,7 +16,7 @@
   <link href="/static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
   <link href="/static/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
   <link href="/static/css/style.css" rel="stylesheet">
-  <link href="/static/css/dispatch-theme.css?v=8" rel="stylesheet">
+  <link href="/static/css/dispatch-theme.css?v=9" rel="stylesheet">
   <script>
     (function () {
       var stored = localStorage.getItem('dispatch-theme');
@@ -111,7 +111,7 @@
   {% endblock %}
 </head>
 
-<body>
+<body data-dispatch-role="{{ token['role'] }}">
 
   <!-- ======= Banner ======= -->
   <header id="header" class="header fixed-top d-flex align-items-center">
@@ -262,15 +262,6 @@
       </li>
       {% endif %}
 
-      {% if token['role'] > 3 %}
-      <li class="nav-item">
-        <a class="nav-link collapsed" href="/settings/alerts">
-          <i class="bi bi-bell"></i>
-          <span>Alerts</span>
-        </a>
-      </li>
-      {% endif %}
-
       <br>
       <li class="nav-heading">Settings</li>
       <li class="nav-item">
@@ -293,6 +284,15 @@
           <span>Reverse Proxy</span>
         </a>
       </li>
+
+      {% if token['role'] > 2 %}
+      <li class="nav-item">
+        <a class="nav-link collapsed" href="/settings/alerts">
+          <i class="bi bi-bell"></i>
+          <span>Alerts</span>
+        </a>
+      </li>
+      {% endif %}
 
       {% endif %}
 
@@ -384,6 +384,6 @@
   <script src="/static/js/main.js"></script>
   <script src="/js/dispatch.js"></script>
   {% block html_footer %}{% endblock %}
-  <link href="/static/css/dispatch-theme.css?v=8" rel="stylesheet">
+  <link href="/static/css/dispatch-theme.css?v=9" rel="stylesheet">
 </body>
 </html>

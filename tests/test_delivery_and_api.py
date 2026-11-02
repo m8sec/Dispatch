@@ -104,6 +104,8 @@ def test_cradles_include_new_methods(admin_client):
     assert "language-powershell" not in html
     assert "function highlightCradles()" in html
     assert "highlightCradles();" in html
+    assert 'params={"key": key, "data": b64}' in html
+    assert "key=$([uri]::EscapeDataString($key))" in html
     css = Path("dispatch/static/css/dispatch-theme.css").read_text(encoding="utf-8")
     assert "pre code,\n.hljs" in css
     assert "background: var(--dispatch-code-bg);" in css

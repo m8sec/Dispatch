@@ -136,6 +136,11 @@
 
         <div class="col-md-10" style="margin-top:4px;">
             <input type="checkbox" style="padding-left:5px;" onclick="ToggleKey()">&nbsp;Show API Key
+            <p class="form-text mb-0">
+              Send this value in the <code>X-Dispatch-Auth</code> header on the admin interface.
+              That key can list files, upload a file, and download a file by alias or filename.
+              Listing and upload follow the user's role. The browser file page uses the signed-in session, not this key.
+            </p>
         </div>
 
         <div class="col-md-10" style="margin-top:10px;">

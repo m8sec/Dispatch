@@ -58,5 +58,17 @@ python3 dispatch-server.py --debug
 
 `--disable-exec` was removed. The script interface is off by default; pass `--enable-script-interface` to turn it on.
 
+## API keys
+
+Send the user's key in the `X-Dispatch-Auth` header on the admin interface. The key uses that user's role.
+
+- `GET /api/files/list` lists files the role can see. The payload is only `id`, `filename`, `alias`, `file_size`, `access`, `max_downloads`, and `download_count`. `GET /api/files/minimal-list` returns the same shape. `0` or a null `max_downloads` means unlimited.
+- `POST /api/file/upload` uploads a file (Upload role or higher).
+- `GET /file/get/alias/<alias>` downloads by alias.
+- `GET /file/get/name/<filename>` downloads by filename.
+- `GET /file/get/<id>` downloads by the file id.
+
+The signed-in file page uses `GET /api/files/listing`, which requires a session cookie and is not available to an API key. That response includes the extra fields the admin UI needs, such as paths and uploader names.
+
 ## Disclaimer
 Dispatch is intended only for authorized security testing and sanctioned operations. Do not use it against systems without explicit permission.

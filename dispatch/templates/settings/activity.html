@@ -131,7 +131,7 @@ Activity
 {% block bread_crumb %}
 <div class="pagetitle">
   <h1>Client Activity <span id="activityLive" class="live-pill is-off"><i class="bi bi-circle-fill"></i> Connecting</span></h1>
-  {% if token['role'] > 3 %}
+  {% if token['role'] > 2 %}
   <p class="mb-0"><a href="/settings/alerts">Manage alerts</a></p>
   {% endif %}
   <nav>

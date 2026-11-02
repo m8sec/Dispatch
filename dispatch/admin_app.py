@@ -199,7 +199,46 @@ def _max_downloads_from_form():
         value = int(raw)
     except (TypeError, ValueError):
         return None
+    # 0 means unlimited and is stored as NULL.
     return value if value > 0 else None
+
+
+# API-key clients only need enough to automate list/upload/download.
+# Paths, uploader, host, folder ids, and encryption settings stay off this payload.
+_PUBLIC_FILE_KEYS = (
+    'id',
+    'filename',
+    'alias',
+    'file_size',
+    'access',
+    'max_downloads',
+    'download_count',
+)
+
+
+def _public_file_summary(record):
+    return {key: record.get(key) for key in _PUBLIC_FILE_KEYS}
+
+
+def _session_user():
+    token = auth.validateToken(request)
+    return token if isinstance(token, dict) else None
+
+
+def _files_visible_to(db, user_role, include_size=False):
+    """Files the caller's role may see, including folder access checks."""
+    all_files = db.list_files(include_size=include_size)
+    folder_access_map = {folder['id']: folder['access'] for folder in db.list_folders()}
+    visible = []
+    for file in all_files:
+        folder_id = file.get('folder_id')
+        if folder_id and not _can_access_folder(user_role, folder_access_map.get(folder_id, 2)):
+            continue
+        # Private files are operator-and-above. Public and public-once are visible once authenticated.
+        if file.get('access', 3) == 3 and user_role < 3:
+            continue
+        visible.append(file)
+    return visible
 
 
 def _page_notice(message, success=True):
@@ -734,13 +773,13 @@ class DispatchServer:
     # ===== ALERTS CONFIGURATION ROUTES =====
 
     @app.route('/settings/alerts', methods=['GET'])
-    @auth.admin_required
+    @auth.operator_required
     def settings_alerts(token):
         """Alerts settings page"""
         return render_template('settings/alerts.html', token=token, config=current_app.config)
 
     @app.route('/api/alerts', methods=['GET'])
-    @auth.admin_required
+    @auth.operator_required
     def api_list_alerts(token):
         """List all configured alerts"""
         try:
@@ -756,7 +795,7 @@ class DispatchServer:
             return Response(response=dumps({'error': str(e)}), status=500, mimetype='application/json')
 
     @app.route('/api/alerts', methods=['POST'])
-    @auth.admin_required
+    @auth.operator_required
     def api_create_alert(token):
         """Create a new alert"""
         try:
@@ -804,7 +843,7 @@ class DispatchServer:
             return Response(response=dumps({'error': str(e)}), status=500, mimetype='application/json')
 
     @app.route('/api/alerts/<int:alert_id>', methods=['PUT'])
-    @auth.admin_required
+    @auth.operator_required
     def api_update_alert(token, alert_id):
         """Update alert enabled status"""
         try:
@@ -821,7 +860,7 @@ class DispatchServer:
             return Response(response=dumps({'error': str(e)}), status=500, mimetype='application/json')
 
     @app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
-    @auth.admin_required
+    @auth.operator_required
     def api_delete_alert(token, alert_id):
         """Delete an alert"""
         try:
@@ -1194,7 +1233,7 @@ class DispatchServer:
         return redirect(url_for('users'))
 
     @app.route('/api/users/list', methods=['GET'])
-    @auth.admin_required
+    @auth.operator_required
     def api_list_users(token):
         """
         Access: Private
@@ -1539,43 +1578,41 @@ class DispatchServer:
         return render_template('users/mfa_enroll.html', token=token, user=user,
                                mfa_status=mfa_status, mfa_available=True)
 
+    @app.route('/api/files/listing', methods=['GET'])
+    @auth.upload_only_required
+    def api_browser_file_listing(token):
+        """Rich file listing for the signed-in admin UI.
+
+        API keys are rejected here so a logged request cannot capture paths,
+        uploader names, or host settings. Automation should call /api/files/list.
+        """
+        if _session_user() is None:
+            return Response(
+                response=dumps({'error': 'session required'}),
+                status=403,
+                mimetype='application/json',
+            )
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            files = _files_visible_to(db, token.get('role', 0), include_size=True)
+        finally:
+            db.close()
+        return Response(response=dumps(files), status=200, mimetype='application/json')
+
     @app.route('/api/files/list', methods=['GET'])
     @auth.upload_only_required
     def api_list_files(token):
+        """Minimal file list for API-key automation.
+
+        Returns id, filename, alias, size, access, and download counters only.
+        """
         db = DispatchDB(current_app.config['db_name'])
-        all_files = db.list_files(include_size=True)
-        all_folders = db.list_folders()
-        user_role = token.get('role', 0)
-
-        # Create folder access map (folder access = minimum role required)
-        folder_access_map = {folder['id']: folder['access'] for folder in all_folders}
-
-        # Filter files based on permissions
-        filtered_files = []
-        for file in all_files:
-            # Check if file is in a folder
-            folder_id = file.get('folder_id')
-
-            if folder_id:
-                # File is in a folder - check folder access (role-based)
-                # Folder access levels: 2=Upload Only, 3=Operator, 4=Administrator
-                folder_access = folder_access_map.get(folder_id, 2)
-
-                # User must have role >= folder access level to see files in that folder
-                if not _can_access_folder(user_role, folder_access):
-                    continue
-
-            # File access levels: 1=Public, 2=Public Once, 3=Private
-            # Public (1) and Public Once (2) are accessible to all authenticated users
-            # Private (3) requires Operator (3) or higher
-            file_access = file.get('access', 3)
-            if file_access == 3 and user_role < 3:
-                continue
-
-            filtered_files.append(file)
-
-        db.close()
-        return Response(response=dumps(filtered_files), status=200, mimetype='application/json')
+        try:
+            files = _files_visible_to(db, token.get('role', 0), include_size=True)
+        finally:
+            db.close()
+        summary = [_public_file_summary(item) for item in files]
+        return Response(response=dumps(summary), status=200, mimetype='application/json')
 
     @app.route('/api/files/revision', methods=['GET'])
     @auth.upload_only_required
@@ -1590,34 +1627,55 @@ class DispatchServer:
     @app.route('/api/files/minimal-list', methods=['GET'])
     @auth.upload_only_required
     def api_minimal_list_files(token):
-        # Minimal file listing for low priv users via api
+        """Older alias of the minimal API-key list. Same fields as /api/files/list."""
         db = DispatchDB(current_app.config['db_name'])
-        data = db.list_files()
-        db.close()
-        minimal = [{
-                "filename": item["filename"],
-                "alias": item["alias"],
-                "size": item["file_size"],
-        }for item in data]
-        return Response(response=dumps(minimal), status=200, mimetype='application/json')
+        try:
+            files = _files_visible_to(db, token.get('role', 0), include_size=True)
+        finally:
+            db.close()
+        summary = [_public_file_summary(item) for item in files]
+        return Response(response=dumps(summary), status=200, mimetype='application/json')
 
     @app.route('/api/files/update-access', methods=['POST'])
     @auth.operator_required
     def api_update_file_access(token):
         try:
-            j = request.get_json(force=True)
-            file_guid = j.get('id')
-            access = int(j.get('access'))
-            if isinstance(file_guid, str) and access in [1, 2, 3]:
-                db = DispatchDB(current_app.config['db_name'])
-                if not db.update_access_by_id(file_guid, access):
-                    db.close()
-                    return abort(404)
-                db.close()
-                return Response(response=dumps({'200': 'Success'}), status=200, mimetype='application/json')
-        except Exception:
-            logging.debug('Failed to update file access', exc_info=True)
-        return abort(403)
+            payload = request.get_json(force=True)
+            file_guid = payload.get('id')
+            access = int(payload.get('access'))
+        except (TypeError, ValueError):
+            return abort(400)
+        if not isinstance(file_guid, str) or access not in (1, 2, 3):
+            return abort(403)
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            updated = db.update_access_by_id(file_guid, access)
+        finally:
+            db.close()
+        if not updated:
+            return abort(404)
+        return Response(response=dumps({'200': 'Success'}), status=200, mimetype='application/json')
+
+    @app.route('/api/files/download-limit', methods=['POST'])
+    @auth.operator_required
+    def api_set_download_limit(token):
+        """Set a file's max downloads. 0 means unlimited."""
+        try:
+            payload = request.get_json(force=True)
+            file_guid = payload.get('id')
+            limit = int(payload.get('max_downloads'))
+        except (TypeError, ValueError):
+            return abort(400)
+        if not isinstance(file_guid, str) or limit < 0:
+            return abort(400)
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            updated = db.set_download_limit(file_guid, limit)
+        finally:
+            db.close()
+        if not updated:
+            return abort(404)
+        return Response(response=dumps({'200': 'Success'}), status=200, mimetype='application/json')
 
     @app.route('/api/file/upload', methods=['POST'])
     @auth.upload_only_required
@@ -1976,6 +2034,29 @@ class DispatchServer:
             if not _can_access_admin_file(token, file_data, folder_access_map):
                 return abort(403)
 
+            config.log(f'Admin file access: {file_data["filename"]}', token, request.remote_addr)
+            try:
+                from dispatch.alerts import check_file_download_alert, check_ip_activity_alert
+                check_file_download_alert(current_app.config['db_name'], file_data['row_id'], file_data['filename'], token.get('user'), request.remote_addr)
+                check_ip_activity_alert(current_app.config['db_name'], request.remote_addr, 'download', f'Admin file: {file_data["filename"]}')
+            except Exception:
+                logging.debug('Admin download alert failed', exc_info=True)
+            return _serve_admin_file(file_data['file_path'], file_data['filename'], encrypt=file_data['encrypt'])
+        finally:
+            db.close()
+
+    @app.route('/file/get/name/<path:filename>', methods=['GET'])
+    @auth.login_required
+    def admin_download_file_by_name(token, filename):
+        """Download a hosted file by its filename. Used by API keys as well as the UI."""
+        db = DispatchDB(current_app.config['db_name'])
+        try:
+            file_data = db.get_file_by_filename(filename)
+            if not file_data:
+                return abort(404)
+            folder_access_map = {folder['id']: folder['access'] for folder in db.list_folders()}
+            if not _can_access_admin_file(token, file_data, folder_access_map):
+                return abort(403)
             config.log(f'Admin file access: {file_data["filename"]}', token, request.remote_addr)
             try:
                 from dispatch.alerts import check_file_download_alert, check_ip_activity_alert
