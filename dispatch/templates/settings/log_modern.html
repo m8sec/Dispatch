@@ -7,7 +7,8 @@ System Log
 {% block html_head %}
 <style>
     .log-viewer {
-        background: white;
+        background: var(--dispatch-surface);
+        color: var(--dispatch-text);
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         padding: 24px;
@@ -20,7 +21,8 @@ System Log
         align-items: center;
         margin-bottom: 20px;
         padding: 12px 16px;
-        background: #f8f9fa;
+        background: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
         border-radius: 8px;
     }
 
@@ -42,20 +44,22 @@ System Log
         flex: 1;
         padding: 16px;
         border-radius: 8px;
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border-left: 4px solid #42B41C;
+        background: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
+        border: 1px solid var(--dispatch-border);
+        border-left: 4px solid var(--dispatch-accent);
     }
 
     .stat-label {
         font-size: 12px;
-        color: #6c757d;
+        color: var(--dispatch-muted);
         margin-bottom: 4px;
     }
 
     .stat-value {
         font-size: 24px;
         font-weight: 700;
-        color: #212529;
+        color: var(--dispatch-text);
     }
 
     .log-table {
@@ -64,11 +68,12 @@ System Log
     }
 
     .log-table th {
-        background: #f8f9fa;
+        background: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
         padding: 12px;
         text-align: left;
         font-weight: 600;
-        border-bottom: 2px solid #dee2e6;
+        border-bottom: 2px solid var(--dispatch-border);
         position: sticky;
         top: 0;
         z-index: 10;
@@ -76,12 +81,13 @@ System Log
 
     .log-table td {
         padding: 12px;
-        border-bottom: 1px solid #dee2e6;
+        border-bottom: 1px solid var(--dispatch-border);
         vertical-align: top;
     }
 
     .log-table tr:hover {
-        background: #f8f9fa;
+        background: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
     }
 
     .log-level {
@@ -93,18 +99,18 @@ System Log
     }
 
     .log-level-info {
-        background: #d1ecf1;
-        color: #0c5460;
+        background: var(--dispatch-info-bg);
+        color: var(--dispatch-info-text);
     }
 
     .log-level-warning {
-        background: #fff3cd;
-        color: #856404;
+        background: var(--dispatch-warning-bg);
+        color: var(--dispatch-warning-text);
     }
 
     .log-level-error {
-        background: #f8d7da;
-        color: #721c24;
+        background: var(--dispatch-danger-bg);
+        color: var(--dispatch-danger-text);
     }
 
     .log-level-critical {
@@ -113,8 +119,8 @@ System Log
     }
 
     .log-level-debug {
-        background: #e7e7e7;
-        color: #495057;
+        background: var(--dispatch-neutral-bg);
+        color: var(--dispatch-neutral-text);
     }
 
     .log-message {
@@ -126,32 +132,32 @@ System Log
     .log-timestamp {
         font-family: 'Courier New', monospace;
         font-size: 12px;
-        color: #6c757d;
+        color: var(--dispatch-muted);
         white-space: nowrap;
     }
 
     .log-user {
         font-weight: 600;
-        color: #42B41C;
+        color: var(--dispatch-accent);
     }
 
     .log-ip {
         font-family: 'Courier New', monospace;
         font-size: 12px;
-        color: #6c757d;
+        color: var(--dispatch-muted);
     }
 
     .log-container {
         max-height: calc(100vh - 400px);
         overflow-y: auto;
         border-radius: 8px;
-        border: 1px solid #dee2e6;
+        border: 1px solid var(--dispatch-border);
     }
 
     .empty-logs {
         text-align: center;
         padding: 60px 20px;
-        color: #6c757d;
+        color: var(--dispatch-muted);
     }
 
     .empty-logs i {
@@ -166,8 +172,8 @@ System Log
     }
 
     .spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #42B41C;
+        border: 4px solid var(--dispatch-surface-3);
+        border-top: 4px solid var(--dispatch-accent);
         border-radius: 50%;
         width: 40px;
         height: 40px;
@@ -299,7 +305,7 @@ System Log
     <!-- Loading State -->
     <div id="loadingState" class="loading" style="display:none;">
         <div class="spinner"></div>
-        <p style="margin-top:16px;color:#6c757d;">Loading logs...</p>
+        <p style="margin-top:16px;color:var(--dispatch-muted);">Loading logs...</p>
     </div>
 
     <!-- Log Table -->

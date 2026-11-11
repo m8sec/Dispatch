@@ -30,14 +30,15 @@ Client Interface
         margin-top: 10px;
     }
     .warning-box {
-        background: #fff3cd;
-        border: 1px solid #ffc107;
+        background: var(--dispatch-warning-bg);
+        color: var(--dispatch-warning-text);
+        border: 1px solid var(--dispatch-border);
         border-radius: 8px;
         padding: 15px;
         margin-bottom: 20px;
     }
     .warning-box i {
-        color: #856404;
+        color: var(--dispatch-warning-text);
     }
     .status-indicator {
         display: inline-block;
@@ -116,7 +117,7 @@ Client Interface
                     <td>
                         <b>Client Port</b><br>
                         <i>External port for file delivery URLs (default: 443).</i>
-                        <p style="margin:5px 0 0 0;color:#0d6efd;font-size:12px;">
+                        <p class="hint-info" style="margin:5px 0 0 0;font-size:12px;">
                             <i class="bi bi-info-circle"></i> Changing the port will restart the client interface.
                         </p>
                     </td>
@@ -128,7 +129,7 @@ Client Interface
                     <td>
                         <b>Redirect URL</b><br>
                         <i>Redirect destination for access control violations.</i>
-                        <p style="margin:10px 0 0 0;color:#856404;">
+                        <p class="hint-warning" style="margin:10px 0 0 0;">
                             <i class="bi bi-exclamation-triangle"></i> Do not use Dispatch IP to avoid redirect loops.
                         </p>
                     </td>
@@ -240,7 +241,7 @@ Client Interface
 {% endblock %}
 
 {% block html_footer %}
-{{ status_msg }}
+{% include "_notice.html" %}
 <script>
 function addHeaderRow() {
     const container = document.getElementById('headersContainer');

@@ -96,7 +96,7 @@ class SessionShell(Cmd):
 
     def do_bg(self, arg):
         """Return to main server prompt"""
-        print(f"[~] Returning to main menu.")
+        print("[~] Returning to main menu.")
         return True
 
 
@@ -111,11 +111,12 @@ def start_server(host, port):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Start HTTPS command server.")
-    parser.add_argument('--host', default='0.0.0.0', help='Bind address (default: 0.0.0.0)')
+    # Demo listener bind; operators can pass --host.
+    parser.add_argument('--host', default='0.0.0.0', help='Bind address (default: 0.0.0.0)')  # noqa: S104
     parser.add_argument('--port', type=int, default=8443, help='Port to bind (default: 8443)')
     args = parser.parse_args()
 
-    print(f"\n[+] Starting Dispatch demo C2")
+    print("\n[+] Starting Dispatch demo C2")
     threading.Thread(target=start_server, args=(args.host, args.port), daemon=True).start()
     sleep(0.5)
     ServerShell().cmdloop()

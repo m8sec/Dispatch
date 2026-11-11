@@ -1,5 +1,6 @@
 """Run scheduled scripts in a background thread."""
 
+import logging
 import threading
 import subprocess
 import tempfile
@@ -113,7 +114,8 @@ class ScriptScheduler:
                 tmp.write(script.get('script_content', ''))
                 tmp_path = tmp.name
 
-            result = subprocess.run(['python3', tmp_path], capture_output=True, text=True, timeout=30)
+            # Scheduled scripts are operator-authored Python, same as the manual runner.
+            result = subprocess.run(['python3', tmp_path], capture_output=True, text=True, timeout=30)  # noqa: S603, S607
             output = (result.stdout or '') + (result.stderr or '')
             success = result.returncode == 0
         except subprocess.TimeoutExpired:
@@ -128,7 +130,7 @@ class ScriptScheduler:
                     import os
                     os.remove(tmp_path)
                 except Exception:
-                    pass
+                    logging.debug('Failed to remove scheduled script temp file', exc_info=True)
 
         db = DispatchDB(self.db_path)
         try:
@@ -151,7 +153,7 @@ class ScriptScheduler:
                         notify_plain_no_codeblock=bool(script.get('notify_plain_no_codeblock', 0))
                     )
             except Exception:
-                pass
+                logging.debug('Scheduled script notification failed', exc_info=True)
 
 
 scheduler = ScriptScheduler()

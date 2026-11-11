@@ -46,6 +46,12 @@ Edit
         </div>
 
         <div class="col-md-10">
+          <label>Max downloads</label>
+          <input type="number" min="0" class="form-control" name="max_downloads" value="{{ data['max_downloads'] if data['max_downloads'] else 0 }}">
+          <small class="text-muted">Used {{ data['download_count'] or 0 }}{% if data['max_downloads'] %} of {{ data['max_downloads'] }}{% endif %}. 0 means unlimited.</small>
+        </div>
+
+        <div class="col-md-10">
           <label>Access Permissions</label>
           <select name="access" class="form-control">
             <option value="1" {{ 'selected' if data['access'] == 1 }}>Public</option>
@@ -57,7 +63,7 @@ Edit
         <div class="col-md-12">
           <label for="file_content">Content:</label>
           {% if content == 'False' %}
-          <div class="form-control" style="background-color:#f0f4f7;">
+          <div class="form-control" readonly>
             Live editing disabled: Unsupported File-Type.
           </div>
           {% else %}
@@ -78,5 +84,5 @@ Edit
 {% endblock %}
 
 {% block html_footer %}
-{{ status_msg }}
+{% include "_notice.html" %}
 {% endblock %}

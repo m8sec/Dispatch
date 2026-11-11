@@ -1,0 +1,12 @@
+services:
+  dispatch:
+    build: .
+    ports:
+      - "8080:8080"
+      - "8000:8000"
+    volumes:
+      - dispatch-data:/app/dispatch/data
+    restart: unless-stopped
+
+volumes:
+  dispatch-data:

